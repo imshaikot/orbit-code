@@ -1,0 +1,14 @@
+src/**
+scripts/**
+.harness/**
+.vscode-test/**
+.vscode/**
+node_modules/**
+.yarn/**
+.yarnrc.yml
+tsconfig*.json
+esbuild.mjs
+**/*.map
+CLAUDE.md
+.gitignore
+.claude/**

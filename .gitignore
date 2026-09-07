@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.harness/
+.vscode-test/
+*.vsix
+CLAUDE.md
+.claude/
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
