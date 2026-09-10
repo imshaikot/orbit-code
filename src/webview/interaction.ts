@@ -1,0 +1,189 @@
+import * as THREE from 'three';
+import type { Picked, Picker } from './picking';
+import type { Stage } from './stage';
+import type { World } from './world';
+
+const CLICK_SLOP_PX = 5;
+
+export interface InteractionView {
+  showTooltip(x: number, y: number, title: string, detail: string): void;
+  hideTooltip(): void;
+  /** The directory being looked into changed. */
+  locationChanged(): void;
+  /** A file was clicked. */
+  fileClicked(node: number): void;
+  /** A frame is due. */
+  wake(): void;
+  /** Labels need placing again, and a frame is due. */
+  relabel(): void;
+}
+
+/** What a pick found, and the view it found it in: the same pixel with the same camera over the same World gives the same answer. */
+interface LastPick {
+  x: number;
+  y: number;
+  picked: Picked;
+  world: World;
+  view: THREE.Matrix4;
+  projection: THREE.Matrix4;
+}
+
+/**
+ * Hover and click through GPU picking: a click on a bubble looks inside it, Esc backs out one level. Hover picks run
+ * between frames, one at a time. A click is answered at once: from the hover pick already under the pointer while it
+ * still holds, else by a pick started right away rather than after the next frame.
+ */
+export class Interaction {
+  private pointer: { x: number; y: number; clientX: number; clientY: number } | undefined;
+  private hoverRequested = false;
+  private pressedAt: { x: number; y: number } | undefined;
+  private last: LastPick | undefined;
+  /** Picks run one after another; the picker takes one at a time. */
+  private queue: Promise<unknown> = Promise.resolve();
+  private inFlight = 0;
+
+  constructor(
+    private readonly stage: Stage,
+    private readonly picker: Picker,
+    private readonly world: () => World | undefined,
+    private readonly view: InteractionView,
+  ) {
+    const canvas = stage.renderer.domElement;
+
+    canvas.addEventListener('pointermove', (event) => {
+      this.pointer = { x: event.offsetX, y: event.offsetY, clientX: event.clientX, clientY: event.clientY };
+      this.hoverRequested = true;
+      view.wake();
+    });
+
+    canvas.addEventListener('pointerleave', () => {
+      this.pointer = undefined;
+      this.hoverRequested = false;
+      this.world()?.hover({ kind: 'none' });
+      view.hideTooltip();
+      canvas.style.cursor = '';
+      view.wake();
+    });
+
+    canvas.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      this.pressedAt = { x: event.offsetX, y: event.offsetY };
+      // Whatever is under the pointer is looked up now, so the answer is usually in by the time the button comes up.
+      if (!this.fresh(event.offsetX, event.offsetY)) void this.pickAt(event.offsetX, event.offsetY, 'hover');
+    });
+
+    canvas.addEventListener('pointerup', (event) => {
+      const pressed = this.pressedAt;
+      this.pressedAt = undefined;
+      if (event.button !== 0 || !pressed || Math.hypot(event.offsetX - pressed.x, event.offsetY - pressed.y) > CLICK_SLOP_PX) return;
+      const fresh = this.fresh(event.offsetX, event.offsetY);
+      if (fresh) this.clicked(fresh.world, fresh.picked);
+      else void this.pickAt(event.offsetX, event.offsetY, 'click');
+    });
+
+    window.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.matches('input, textarea, select')) {
+        target.blur();
+        return;
+      }
+      // Inside the editor or the file card, Esc belongs to them.
+      if (target instanceof HTMLElement && target.closest('.editor-sheet, .file-menu')) return;
+      this.up();
+    });
+  }
+
+  /** Runs after each rendered frame and starts at most one hover pick. True while one is still wanted, so the frame loop keeps pace. */
+  afterFrame(): boolean {
+    if (this.hoverRequested && this.pointer && this.inFlight === 0) {
+      this.hoverRequested = false;
+      void this.pickAt(this.pointer.x, this.pointer.y, 'hover');
+    }
+    return this.hoverRequested || this.inFlight > 0;
+  }
+
+  /** A live update replaced the World and node indices moved: pick again under the pointer. */
+  worldReplaced(): void {
+    this.hoverRequested = this.pointer !== undefined;
+    this.view.wake();
+  }
+
+  /** Back out to the directory around the one in view. */
+  up(): void {
+    if (this.world()?.up()) this.moved();
+  }
+
+  /** Straight to a directory on the current path (the breadcrumb). */
+  goTo(cluster: number): void {
+    const world = this.world();
+    if (!world || world.focus.cluster === cluster) return;
+    world.goTo(cluster);
+    this.moved();
+  }
+
+  private moved(): void {
+    this.world()?.hover({ kind: 'none' });
+    this.view.hideTooltip();
+    this.stage.renderer.domElement.style.cursor = '';
+    this.view.locationChanged();
+    // What is under the pointer changes with the directory.
+    this.hoverRequested = this.pointer !== undefined;
+    this.view.relabel();
+  }
+
+  /** The latest pick, if it was at this pixel, over this World, with the camera where it still is. */
+  private fresh(x: number, y: number): LastPick | undefined {
+    const last = this.last;
+    if (!last || last.world !== this.world() || Math.floor(x) !== last.x || Math.floor(y) !== last.y) return undefined;
+    const camera = this.stage.camera;
+    camera.updateMatrixWorld();
+    return camera.matrixWorld.equals(last.view) && camera.projectionMatrix.equals(last.projection) ? last : undefined;
+  }
+
+  private clicked(world: World, picked: Picked): void {
+    if (picked.kind === 'cluster') {
+      world.goTo(picked.index);
+      this.moved();
+    } else if (picked.kind === 'node') {
+      this.view.hideTooltip();
+      this.view.fileClicked(picked.index);
+    }
+    this.view.wake();
+  }
+
+  private async pickAt(x: number, y: number, reason: 'hover' | 'click'): Promise<void> {
+    const { camera, width, height, scene, renderer } = this.stage;
+    this.inFlight++;
+    try {
+      let seen: LastPick | undefined;
+      const run = async (): Promise<Picked | undefined> => {
+        const world = this.world();
+        if (!world) return undefined;
+        camera.updateMatrixWorld();
+        const view = camera.matrixWorld.clone();
+        const projection = camera.projectionMatrix.clone();
+        const picked = await this.picker.pick(camera, x, y, width, height, world.uniforms, scene, (on) => world.setPickPass(on));
+        if (picked) seen = { x: Math.floor(x), y: Math.floor(y), picked, world, view, projection };
+        return picked;
+      };
+      const result = this.queue.then(run);
+      this.queue = result.catch(() => undefined);
+      const picked = await result;
+      if (!picked || !seen || seen.world !== this.world()) return;
+      this.last = seen;
+      if (reason === 'click') {
+        this.clicked(seen.world, picked);
+        return;
+      }
+      if (!this.pointer) return; // left the canvas meanwhile: the hover was already cleared
+      const tip = seen.world.hover(picked);
+      if (tip && this.pointer) this.view.showTooltip(this.pointer.clientX, this.pointer.clientY, tip.title, tip.detail);
+      else this.view.hideTooltip();
+      renderer.domElement.style.cursor = picked.kind === 'none' ? '' : 'pointer';
+      this.view.wake();
+    } finally {
+      this.inFlight--;
+    }
+  }
+}
