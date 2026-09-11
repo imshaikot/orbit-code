@@ -49,6 +49,8 @@ export class SessionView {
   private readonly deny = button('Deny', 'button');
   private readonly input = el('textarea', 'sv-input');
   private readonly action = el('button', 'button primary sv-action', 'Send');
+  /** Shown only once a turn has failed (an API error, or the process lost to the machine sleeping): resumes the same conversation without retyping anything. */
+  private readonly continueButton = button('Continue', 'button primary sv-continue', 'Continue this conversation');
   private readonly panes = new Map<string, Pane>();
   /** The latest state of each conversation, by key. */
   private readonly states = new Map<string, SessionState>();
@@ -88,7 +90,7 @@ export class SessionView {
     this.input.rows = 1;
     this.input.setAttribute('aria-label', 'Reply');
     this.action.type = 'submit';
-    footer.append(this.input, this.action);
+    footer.append(this.continueButton, this.input, this.action);
 
     this.panel.append(head, this.transcript, this.permission, footer);
     this.root.append(this.panel);
@@ -110,6 +112,7 @@ export class SessionView {
       this.autosize();
       this.refreshFooter();
     });
+    this.continueButton.addEventListener('click', () => this.continueTurn());
     this.allow.addEventListener('click', () => this.answer('allow'));
     this.always.addEventListener('click', () => this.answer('always'));
     this.deny.addEventListener('click', () => this.answer('deny'));
@@ -175,7 +178,11 @@ export class SessionView {
 
   /** The followed session's activity changed. */
   refresh(): void {
-    if (this.isOpen) this.renderHead();
+    if (!this.isOpen) return;
+    this.renderHead();
+    // The transcript's `turn` entry (which the header and Continue read from `this.turn.end`) can arrive after the
+    // state message that dropped the phase back to idle, so the footer needs its own refresh once it does.
+    this.refreshFooter();
   }
 
   /** One conversation's state; only the one on show changes what is drawn. */
@@ -288,6 +295,13 @@ export class SessionView {
     this.transcript.scrollTop = this.transcript.scrollHeight;
   }
 
+  /** Resumes the conversation after a failed turn, without needing anything typed: `prompt()` already restarts the agent process with `--resume`. */
+  private continueTurn(): void {
+    const key = this.shown;
+    if (key === undefined || this.state?.phase !== 'idle') return;
+    this.actions.prompt('Continue', key);
+  }
+
   private answer(answer: PermissionAnswer): void {
     const request = this.state?.permission;
     if (!request || this.answered === request.id || this.shown === undefined) return;
@@ -319,8 +333,16 @@ export class SessionView {
   private refreshFooter(): void {
     const phase = this.state?.phase ?? 'unavailable';
     const busy = phase === 'working' || phase === 'stopping';
+    const canContinue = phase === 'idle' && this.turn?.end?.outcome === 'failed';
+    this.continueButton.hidden = !canContinue;
     this.input.disabled = phase !== 'idle';
-    this.input.placeholder = busy ? 'You can reply once Claude finishes' : phase === 'unavailable' ? (this.state?.error ?? 'Claude Code is not available') : 'Reply to continue the conversation…';
+    this.input.placeholder = busy
+      ? 'You can reply once Claude finishes'
+      : phase === 'unavailable'
+        ? (this.state?.error ?? 'Claude Code is not available')
+        : canContinue
+          ? 'Continue where it left off, or reply with something else…'
+          : 'Reply to continue the conversation…';
     if (busy) {
       this.action.textContent = phase === 'stopping' ? 'Stopping' : 'Stop';
       this.action.className = 'button danger sv-action';

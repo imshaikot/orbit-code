@@ -2021,6 +2021,13 @@ h5.md-heading {
   font-size: 12.5px;
 }
 
+.sv-continue {
+  flex: none;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 12.5px;
+}
+
 /* ── Perf readout ───────────────────────────────────────────── */
 
 .perf {
