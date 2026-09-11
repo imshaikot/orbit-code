@@ -12,6 +12,8 @@ export interface InteractionView {
   locationChanged(): void;
   /** A file was clicked. */
   fileClicked(node: number): void;
+  /** Claude's star was clicked, by its index in the last pick (World.claudeIdAt resolves it to a stable id). */
+  sparkClicked(index: number): void;
   /** A frame is due. */
   wake(): void;
   /** Labels need placing again, and a frame is due. */
@@ -148,6 +150,9 @@ export class Interaction {
     } else if (picked.kind === 'node') {
       this.view.hideTooltip();
       this.view.fileClicked(picked.index);
+    } else if (picked.kind === 'claude') {
+      this.view.hideTooltip();
+      this.view.sparkClicked(picked.index);
     }
     this.view.wake();
   }

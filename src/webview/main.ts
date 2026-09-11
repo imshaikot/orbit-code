@@ -14,6 +14,7 @@ import { FileMenu } from './hud/fileMenu';
 import { Identity } from './hud/identity';
 import { PerfReadout } from './hud/perf';
 import { SessionPanel } from './hud/sessionPanel';
+import { SparkPopup } from './hud/sparkPopup';
 import { StatusOverlay } from './hud/status';
 import { Tooltip } from './hud/tooltip';
 import { Interaction } from './interaction';
@@ -96,18 +97,39 @@ const session = new SessionPanel(
   },
   () => loop.wake(),
 );
+const sparkPopup = new SparkPopup(hud, {
+  toggleFollow: () => {
+    const world = scene.world;
+    if (!world || sparkAnchorId === undefined) return;
+    if (world.following === sparkAnchorId) disengageFollow(world);
+    else engageFollow(world, sparkAnchorId);
+  },
+  closed: () => {
+    sparkAnchorId = undefined;
+  },
+});
 const perf = new PerfReadout(hud);
 const status = new StatusOverlay(hud);
 const tooltip = new Tooltip(hud);
 status.show('indexing', 'Waiting for the workspace index');
-
-/* ── Frame loop, scene and input ───────────────────────────────────────── */
 
 let labelsDirty = true;
 let lastRendered = 0;
 const perfWindow = { start: 0, frames: 0, cpu: 0 };
 /** Read by scripts/harness.mjs to verify the frame loop, picking and live updates; harmless in VS Code. */
 const debug = { frames: 0, rendering: false, cpuMs: 0, calls: 0, triangles: 0, fps: 0, updates: 0, updateMs: 0 };
+
+/* ── Spark: Claude's star, the popup a click on it opens, and Follow ──────────────────────────────── */
+
+/** How long engaging Follow takes to ease the camera to a fair distance from the star. */
+const FOLLOW_TWEEN_MS = 600;
+/** Once framed, how fast the camera keeps pace with the star, per second: most of the way there in a third of a second. */
+const FOLLOW_PAN_RATE = 3;
+/** The star the popup is open for (or was last open for, while closing), so its toggle knows what to act on. */
+let sparkAnchorId: number | undefined;
+const sparkAnchor = new THREE.Vector3();
+/** The one-shot move to a fair distance from the star when Follow is switched on; continuous tracking takes over once it ends. */
+let followTween: { start: number; fromPosition: THREE.Vector3; toPosition: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3 } | undefined;
 
 const loop = new FrameLoop(frame, (visible) => {
   if (visible) labelsDirty = true;
@@ -122,6 +144,8 @@ const scene = new SceneController(stage, host, {
     labels.clear();
     tooltip.hide();
     fileMenu.close();
+    sparkPopup.close();
+    followTween = undefined;
     identity.setLocation(undefined);
   },
   worldReady: (world) => {
@@ -149,6 +173,7 @@ const interaction = new Interaction(stage, picker, () => scene.world, {
     if (!fileMenu.busy) fileMenu.close();
   },
   fileClicked: openFileMenu,
+  sparkClicked: openSparkPopup,
   wake: loop.wake,
   relabel,
 });
@@ -211,6 +236,11 @@ function frame({ now, dt, resumed }: FrameSample): Pace {
     labelsDirty = true;
     if (!fileMenu.busy) fileMenu.close();
   }
+  if (followSpark(world, now, dt)) {
+    labelsDirty = true;
+    keepGoing = true;
+    smooth = true;
+  }
   if (!world.focus.animating && stage.controls.update()) {
     labelsDirty = true;
     keepGoing = true;
@@ -219,6 +249,7 @@ function frame({ now, dt, resumed }: FrameSample): Pace {
   stage.renderer.render(stage.scene, stage.camera);
   const { calls, triangles } = stage.renderer.info.render; // read before the pick pass resets it
   if (fileMenu.isOpen) placeFileMenu(world);
+  if (sparkPopup.isOpen) placeSparkPopup(world);
   if (world.consumeLabelsDirty() || labelsDirty) {
     labels.render(world.labelSpecs(), stage.camera, stage.width, stage.height);
     labelsDirty = false;
@@ -286,6 +317,89 @@ function placeFileMenu(world: World): void {
   const x = (menuAnchor.x * 0.5 + 0.5) * stage.width;
   const y = (-menuAnchor.y * 0.5 + 0.5) * stage.height;
   fileMenu.place(x, y, menuAnchor.z > -1 && menuAnchor.z < 1 && x >= 0 && y >= 0 && x <= stage.width && y <= stage.height);
+}
+
+/** A click on Claude's star: the popup opens beside it, offering to follow it or (already following) to stop. */
+function openSparkPopup(index: number): void {
+  const world = scene.world;
+  if (!world) return;
+  const id = world.claudeIdAt(index);
+  if (id === undefined) return;
+  sparkAnchorId = id;
+  sparkPopup.open(world.following === id);
+  placeSparkPopup(world);
+  loop.wake();
+}
+
+function placeSparkPopup(world: World): void {
+  if (sparkAnchorId === undefined) return;
+  const point = world.claudePosition(sparkAnchorId);
+  if (!point) {
+    sparkPopup.close();
+    return;
+  }
+  sparkAnchor.copy(point).project(stage.camera);
+  const x = (sparkAnchor.x * 0.5 + 0.5) * stage.width;
+  const y = (-sparkAnchor.y * 0.5 + 0.5) * stage.height;
+  sparkPopup.place(x, y, sparkAnchor.z > -1 && sparkAnchor.z < 1 && x >= 0 && y >= 0 && x <= stage.width && y <= stage.height);
+}
+
+/** Switches Follow on: the camera eases to a fair distance from the star, then `followSpark` keeps pace with it every frame. */
+function engageFollow(world: World, id: number): void {
+  const point = world.claudePosition(id);
+  if (!point) return;
+  world.follow(id);
+  const direction = new THREE.Vector3().subVectors(stage.camera.position, stage.controls.target);
+  if (direction.lengthSq() < 1e-6) direction.set(0.3, 0.42, 1);
+  direction.normalize();
+  const distance = Math.max(20, world.bounds.radius * 0.12);
+  followTween = {
+    start: performance.now(),
+    fromPosition: stage.camera.position.clone(),
+    toPosition: point.clone().addScaledVector(direction, distance),
+    fromTarget: stage.controls.target.clone(),
+    toTarget: point.clone(),
+  };
+  loop.wake();
+}
+
+function disengageFollow(world: World): void {
+  world.follow(undefined);
+  followTween = undefined;
+}
+
+/**
+ * While Follow is on, keeps the orbit target on the star: first the one-shot move to a fair distance, then every
+ * frame easing the gap between the target and wherever the star has since moved to (a read, an edit, or home).
+ * The user's own drag or zoom is left alone either way, so what they do to the camera in the meantime sticks:
+ * only the target moves to keep up, by the same amount as the camera, so the offset the user set stays put.
+ * Paused while a directory move (Focus) is animating, so the two moves never fight; the gap this leaves eases
+ * out over the following frames rather than jumping. Returns whether it moved the camera this frame.
+ */
+function followSpark(world: World, now: number, dt: number): boolean {
+  if (followTween) {
+    const t = Math.min(1, (now - followTween.start) / FOLLOW_TWEEN_MS);
+    const eased = 1 - Math.pow(1 - t, 3);
+    stage.camera.position.lerpVectors(followTween.fromPosition, followTween.toPosition, eased);
+    stage.controls.target.lerpVectors(followTween.fromTarget, followTween.toTarget, eased);
+    stage.camera.lookAt(stage.controls.target);
+    if (t >= 1) followTween = undefined;
+    return true;
+  }
+  const id = world.following;
+  if (id === undefined || world.focus.animating) return false;
+  const point = world.claudePosition(id);
+  if (!point) {
+    world.follow(undefined);
+    if (sparkPopup.isOpen) sparkPopup.setFollowing(false);
+    return false;
+  }
+  const gap = new THREE.Vector3().subVectors(point, stage.controls.target);
+  if (gap.lengthSq() < 1e-6) return false;
+  gap.multiplyScalar(Math.min(1, dt * FOLLOW_PAN_RATE));
+  stage.controls.target.add(gap);
+  stage.camera.position.add(gap);
+  return true;
 }
 
 /** Runs `act` on the file's node in the current World, if the file is still in it. */
