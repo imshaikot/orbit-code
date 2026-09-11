@@ -170,6 +170,57 @@ try {
   })`);
   report.checks.firstBubble = { whileWorking: firstBubble, leftAfterTurn: await waitFor(evaluate, `!document.querySelector('.claude-bubble')`, 6_000) };
 
+  // Claude's star, at rest: a click brings up "Follow Spark"; choosing it eases the camera to frame the star (the
+  // popup is for whichever star was clicked, the first one's stable id always 0) and keeps the target on it — after
+  // the tween, the star projects to the middle of the screen. Clicking the star again offers to stop following.
+  // A drag while following still orbits the camera: user control keeps working, and Follow stays on regardless.
+  const starProjection = () => evaluate(`(() => {
+    const w = __orbit.world();
+    const p = w.claudePosition(w.following ?? 0);
+    return p ? __orbit.project(p.x, p.y, p.z) : null;
+  })()`);
+  const toggleCentre = () => evaluate(`(() => {
+    const e = document.querySelector('.spark-popup-toggle');
+    if (!e) return null;
+    const r = e.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+  const spark = {};
+  const starAt = await starProjection();
+  spark.starOnScreen = !!starAt && starAt.depth > -1 && starAt.depth < 1 && starAt.x >= 0 && starAt.y >= 0 && starAt.x <= width && starAt.y <= height;
+  if (spark.starOnScreen) {
+    await click(starAt.x, starAt.y);
+    await sleep(250);
+    spark.popupOpenedOnClick = await evaluate(`!document.querySelector('.spark-popup').hidden`);
+    spark.toggleLabel = await evaluate(`document.querySelector('.spark-popup-toggle')?.textContent`);
+    const toggle = await toggleCentre();
+    if (toggle) await click(toggle.x, toggle.y);
+    await sleep(800); // the follow tween (600ms) plus a margin
+    spark.popupClosedAfterChoosing = await evaluate(`document.querySelector('.spark-popup').hidden`);
+    spark.followingAfterToggle = await evaluate(`__orbit.world().following ?? null`);
+    const centered = await starProjection();
+    spark.centeredWhileFollowing = !!centered && Math.abs(centered.x - width / 2) < 60 && Math.abs(centered.y - height / 2) < 60;
+    await mouse('mousePressed', width / 2, height / 2);
+    for (let k = 1; k <= 8; k++) {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: width / 2 + k * 15, y: height / 2, button: 'left', buttons: 1 });
+      await sleep(20);
+    }
+    await mouse('mouseReleased', width / 2 + 120, height / 2);
+    await sleep(300);
+    spark.followingSurvivedDrag = (await evaluate(`__orbit.world().following ?? null`)) === spark.followingAfterToggle;
+    const starAt2 = await starProjection();
+    if (starAt2) {
+      await click(starAt2.x, starAt2.y);
+      await sleep(250);
+      spark.toggleLabelWhileFollowing = await evaluate(`document.querySelector('.spark-popup-toggle')?.textContent`);
+      const toggle2 = await toggleCentre();
+      if (toggle2) await click(toggle2.x, toggle2.y);
+      await sleep(300);
+      spark.followingAfterSecondToggle = await evaluate(`__orbit.world().following ?? null`);
+    }
+  }
+  report.checks.spark = spark;
+
   // A thought while idle: every import line on screen fires, then the loop parks again. Seen from inside the directory
   // with the most imports between its own files (the root may show no lines at all), with the HUD hidden and the loop
   // parked before and after, so the firing lines are what lights up.
