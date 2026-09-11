@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Orbit: this repository",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "--disable-extensions", "${workspaceFolder}"],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "orbit: build"
+    },
+    {
+      "name": "Orbit: this repository, reindexed",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "--disable-extensions", "${workspaceFolder}"],
+      "env": { "ORBIT_REINDEX": "1" },
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "orbit: build"
+    }
+  ]
+}
