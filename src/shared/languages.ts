@@ -119,8 +119,6 @@ function patterns(kind: FileKind, extractor: Extractor, ...globs: string[]): voi
   for (const glob of globs) byPattern.push({ glob, re: new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`), cls });
 }
 
-/* ── Code ── */
-
 extensions('typescript', 'depcruise', '.ts', '.tsx', '.mts', '.cts');
 extensions('javascript', 'depcruise', '.js', '.jsx', '.mjs', '.cjs');
 extensions('python', 'python', '.py', '.pyi', '.pyw', '.pyx', '.pxd');

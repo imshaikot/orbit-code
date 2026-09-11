@@ -28,8 +28,6 @@ import type { World } from './world';
 const host = new HostBridge();
 const nonce = injectStyles();
 
-/* ── Stage and HUD ─────────────────────────────────────────────────────── */
-
 const app = el('div');
 app.id = 'app';
 document.body.append(app);
@@ -168,8 +166,6 @@ stage.controls.addEventListener('change', relabel);
     return { x: (v.x * 0.5 + 0.5) * stage.width, y: (-v.y * 0.5 + 0.5) * stage.height, depth: v.z };
   },
 };
-
-/* ── Host messages ─────────────────────────────────────────────────────── */
 
 host.on('status', ({ phase, message, progress }) => status.show(phase, message, progress));
 host.on('graph', ({ delta }) => void scene.load(delta));

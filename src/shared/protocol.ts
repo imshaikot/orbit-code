@@ -3,8 +3,6 @@
 
 export const PROTOCOL_VERSION = 8;
 
-/* ── Persisted graph: storageUri/graph.json ─────────────────────────────── */
-
 export interface GraphNode {
   /** Workspace-relative POSIX path. Stable key; session events resolve to it. */
   id: string;
@@ -65,17 +63,12 @@ export interface GraphFile {
   edges: GraphEdge[];
 }
 
-/* ── Host → webview ─────────────────────────────────────────────────────── */
-
 export type HostToWebview =
   | { type: 'status'; phase: 'indexing' | 'error'; message: string; progress?: number }
   | { type: 'graph'; delta: GraphDelta }
   | { type: 'activity'; delta: ActivityDelta }
-  /** Every conversation Orbit has and which one the drawer continues: the snapshot, and whenever one is added, gone or made current. */
   | { type: 'sessions'; sessions: SessionsSnapshot }
-  /** One conversation's state changed. */
   | { type: 'session'; state: SessionState }
-  /** The transcript of the conversation `key`. */
   | { type: 'transcript'; key: string; reset: boolean; entries: TranscriptEntry[] }
   | { type: 'catalog'; catalog: AgentCatalog }
   | { type: 'history'; history: HistorySnapshot }
@@ -112,7 +105,6 @@ export interface GraphReset extends GraphContent {
  */
 export interface GraphUpdate extends GraphContent {
   op: 'update';
-  /** The graph this update was computed from. */
   baseHash: string;
   /** Base node index → node index in this graph, -1 for removed files. A file Orbit renamed within its directory maps to its new name. */
   remap: Int32Array;
@@ -173,8 +165,6 @@ export type ActivityEvent =
   | { kind: 'turnEnd' }
   | { kind: 'mcp'; server: string; tool: string; phase: 'call' | 'done' | 'error' };
 
-/* ── Agent session ──────────────────────────────────────────────────────── */
-
 /** Claude Code permission modes Orbit offers. `default` passes no flag, so the user's own settings apply. */
 export const PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
@@ -188,9 +178,7 @@ export interface SessionOptions {
 export type SessionPhase =
   /** Nothing can be started (no CLI, untrusted workspace, no folder); `error` says why. */
   | 'unavailable'
-  /** Ready for a prompt. */
   | 'idle'
-  /** A turn is in progress. */
   | 'working'
   /** Interrupt sent, waiting for the turn to wind down. */
   | 'stopping';
@@ -216,7 +204,6 @@ export interface SessionState {
   turns: number;
   /** List-price cost the agent reported for this conversation. */
   costUsd: number;
-  /** A tool call waiting for the user's decision. */
   permission?: PermissionRequest;
 }
 
@@ -247,7 +234,6 @@ export interface AgentCatalog {
   /** False until the agent has answered; the drawer then offers the model aliases it knows anyway. */
   known: boolean;
   loading: boolean;
-  /** Why the agent could not be asked, when it could not. */
   error?: string;
   models: ModelChoice[];
   skills: SkillInfo[];
@@ -323,8 +309,6 @@ export type TranscriptEntry =
   | { id: number; kind: 'turn'; outcome: 'done' | 'interrupted' | 'failed'; durationMs: number; costUsd: number; message?: string }
   | { id: number; kind: 'notice'; level: 'info' | 'warn' | 'error'; text: string };
 
-/* ── Webview → host ─────────────────────────────────────────────────────── */
-
 export type WebviewToHost =
   | { type: 'ready'; protocol: number }
   | { type: 'sceneReady'; hash: string }
@@ -350,8 +334,6 @@ export type WebviewToHost =
   | { type: 'file'; id: number; path: string; request: FileRequest }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string };
 
-/* ── Files: the file menu and the editor sheet ──────────────────────────── */
-
 /** How git sees a file. `changed`: it differs from HEAD, staged or not. `none`: not in a git work tree, or no git. */
 export type GitFileState = 'none' | 'untracked' | 'clean' | 'changed';
 
@@ -367,7 +349,6 @@ export type FileRequest =
   /** A VS Code editor tab beside Orbit; `diff` shows the changes against HEAD. */
   | { kind: 'show'; diff: boolean }
   | { kind: 'delete' }
-  /** `to`: the new workspace-relative path. */
   | { kind: 'rename'; to: string };
 
 export type FileReply =

@@ -36,8 +36,6 @@ export function scanImports(language: LanguageId, text: string, fromId: string, 
   return found.result();
 }
 
-/* ── Shared lookups ── */
-
 /** A path relative to the importing file, else the indexed file whose path ends with it (the nearest one). */
 function relativeOrSuffix(spec: string, fromId: string, index: PathIndex): number | undefined {
   const relative = index.exact(joinPath(dirnameOf(fromId), spec));
@@ -142,8 +140,6 @@ function matchSubpath(map: ReadonlyArray<readonly [string, readonly string[]]>, 
   return undefined;
 }
 
-/* ── Python ── */
-
 const PY_EXTS = ['.py', '.pyx', '.pyi'];
 
 function resolvePythonModule(module: string, fromId: string, { index, projects }: ScanContext): number | undefined | null {
@@ -215,8 +211,6 @@ function resolveGoSpec(spec: string, { index, projects }: ScanContext): Resolved
 }
 
 const resolveGoBlock: Resolver = (m, _fromId, ctx) => ({ each: [...m[1].matchAll(/"([^"\n]+)"/g)].map((spec) => resolveGoSpec(spec[1], ctx)) });
-
-/* ── Rust ── */
 
 function rustModuleDir(fromId: string): string {
   const base = basenameOf(fromId).replace(/\.rs$/, '');
@@ -315,8 +309,6 @@ const resolveRustExternCrate: Resolver = (m, _fromId, { index, projects }) => {
   return crate ? hit(index.exact(crate.root)) : null;
 };
 
-/* ── Java / Kotlin / Scala / Groovy, Clojure ── */
-
 const JVM_EXTS = ['.java', '.kt', '.kts', '.scala', '.groovy'];
 
 const resolveJvm: Resolver = (m, fromId, { index }) => {
@@ -335,8 +327,6 @@ const resolveClojure: Resolver = (m, fromId, { index }) => ({
     return hitOrExternal(modulePath(segments, ['.clj', '.cljs', '.cljc'], fromId, index, segments.length));
   }),
 });
-
-/* ── C / C++ / Objective-C ── */
 
 const resolveCInclude: Resolver = (m, fromId, { index }) => {
   const sibling = index.exact(joinPath(dirnameOf(fromId), m[1]));
@@ -391,8 +381,6 @@ const resolveSwiftImport: Resolver = (m, fromId, { index, projects }) => {
   return dir === undefined ? null : swiftFiles(dir);
 };
 
-/* ── Ruby ── */
-
 const resolveRubyRelative: Resolver = (m, fromId, { index }) => {
   const target = joinPath(dirnameOf(fromId), m[1]);
   return hit(target === undefined ? undefined : index.exact(target.endsWith('.rb') ? target : `${target}.rb`));
@@ -402,8 +390,6 @@ const resolveRubyRequire: Resolver = (m, fromId, { index }) => {
   const candidates = index.stemSuffix(m[1].replace(/\.rb$/, ''), ['.rb']);
   return hitOrExternal(candidates.length ? index.closest(fromId, candidates) : undefined);
 };
-
-/* ── PHP ── */
 
 const resolvePhpInclude: Resolver = (m, fromId, { index }) => {
   const spec = m[1].replace(/^\//, '');
@@ -452,8 +438,6 @@ const resolveBlade: Resolver = (m, fromId, { index }) => {
   return hitOrExternal(candidates.length ? index.closest(fromId, candidates) : undefined);
 };
 
-/* ── CSS / SCSS / Sass / Less ── */
-
 const STYLE_EXTS = ['.scss', '.sass', '.css', '.less'];
 
 const resolveStyle: Resolver = (m, fromId, { index }) => {
@@ -470,8 +454,6 @@ const resolveStyle: Resolver = (m, fromId, { index }) => {
   );
 };
 
-/* ── Dart ── */
-
 const resolveDart: Resolver = (m, fromId, { index, projects }) => {
   const spec = m[1];
   if (spec.startsWith('dart:')) return null;
@@ -485,8 +467,6 @@ const resolveDart: Resolver = (m, fromId, { index, projects }) => {
   }
   return hit(index.exact(joinPath(dirnameOf(fromId), spec)));
 };
-
-/* ── Elixir ── */
 
 /** Macro.underscore: MyAppWeb → my_app_web, HTTPClient → http_client. */
 const underscore = (name: string) =>
@@ -508,8 +488,6 @@ const resolveElixir: Resolver = (m, fromId, { index }) => {
     }),
   };
 };
-
-/* ── Other languages ── */
 
 const resolveLua: Resolver = (m, fromId, { index }) => {
   const path = m[1].replace(/\.lua$/, '').replace(/\./g, '/');

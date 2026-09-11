@@ -248,7 +248,6 @@ export class Constellation {
     return this.filter ? this.highlighted?.skill?.name : undefined;
   }
 
-  /** Zooms back out to the whole constellation. */
   resetZoom(): void {
     this.zoomTarget = 1;
     Object.assign(this.centreTarget, { x: 0, y: 0, z: 0 });
@@ -287,7 +286,6 @@ export class Constellation {
     this.events.wake();
   }
 
-  /** The glyphs fold away and the panel drops out. */
   close(): void {
     if (!this.current) return;
     this.cancelDrag();
