@@ -70,3 +70,5 @@ vec4 encodeId(float id) {
 `;
 
 export const PICK_CLUSTER_BASE = 0x800000;
+/** Pick ids of Claude's stars: PICK_CLAUDE_BASE + the star's index in its layer (claude.ts). */
+export const PICK_CLAUDE_BASE = 0xc00000;

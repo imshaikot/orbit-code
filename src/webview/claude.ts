@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { PALETTE } from './palette';
-import type { SharedUniforms } from './uniforms';
+import { ENCODE_ID_GLSL, PICK_CLAUDE_BASE, type SharedUniforms } from './uniforms';
 
 // Claude: a violet-white star per running conversation, each moving over the files its conversation reads or
 // edits, flaring cyan or amber as it does, and returning to its home orbit when the turn ends. One billboard and
 // one draw call per star; one star is always there, and the others fade in beside it and out again once home.
+// A star never draws smaller than MIN_PX on screen, so it stays in sight however far out the camera is. Like
+// nodes.ts and bubbles.ts, it takes clicks through the id pass, the same shader source with PICK defined.
 
 /** Seconds a flare's ring takes to run out to the star's edge. */
 const FLARE_S = 0.7;
@@ -14,29 +16,43 @@ const FOLLOW_RATE = 4;
 const FADE_RATE = 4;
 /** Homes of further stars sit this many star sizes around the first one's. */
 const HOME_RING = 3.2;
+/** The star's half-size never drops below this many CSS pixels, however far out the camera is. */
+const MIN_PX = 16;
+/** Only the bright middle of the star takes clicks, not the faint halo out to its edge. */
+const PICK_RADIUS = 0.6;
 
 const VERTEX = /* glsl */ `
 uniform float uTime;
-uniform float uSize;
 uniform float uFlareAt;
 uniform float uFade;
+uniform float uSize;
+uniform float uViewportHeight;
 varying vec2 vCorner;
 
 void main() {
+  vec4 viewPosition = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  // Never let the star shrink below a few CSS px, however far out the camera is.
+  float pixelsPerUnit = projectionMatrix[1][1] * uViewportHeight * 0.5 / max(-viewPosition.z, 1e-3);
+  float size = max(uSize, ${MIN_PX.toFixed(1)} / pixelsPerUnit);
+#ifdef PICK
+  viewPosition.xy += position.xy * size;
+#else
   float age = uTime - uFlareAt;
   float swell = age < 0.0 ? 0.0 : 0.3 * exp(-age * 6.0);
-  vec4 viewPosition = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-  viewPosition.xy += position.xy * uSize * (1.0 + swell) * (0.4 + 0.6 * uFade);
+  viewPosition.xy += position.xy * size * (1.0 + swell) * (0.4 + 0.6 * uFade);
+#endif
   gl_Position = projectionMatrix * viewPosition;
   vCorner = position.xy;
 }
 `;
 
 const FRAGMENT = /* glsl */ `
+${ENCODE_ID_GLSL}
 uniform float uTime;
 uniform float uBusy;
 uniform float uFlareAt;
 uniform float uFade;
+uniform float uPickId;
 uniform vec3 uCore;
 uniform vec3 uHalo;
 uniform vec3 uFlare;
@@ -44,6 +60,11 @@ varying vec2 vCorner;
 
 void main() {
   float d = length(vCorner);
+#ifdef PICK
+  // A star still fading in, or on its way out, is not there to be clicked.
+  if (d > ${PICK_RADIUS.toFixed(2)} || uFade < 0.5) discard;
+  gl_FragColor = encodeId(uPickId);
+#else
   if (d > 1.0) discard;
   float angle = atan(vCorner.y, vCorner.x);
   float core = 1.0 - smoothstep(0.07, 0.12, d);
@@ -57,43 +78,61 @@ void main() {
   float wave = age < 0.0 ? 0.0 : (1.0 - smoothstep(0.0, 0.04, abs(d - mix(0.14, 0.9, spread)))) * (1.0 - spread) * (1.0 - spread) * 0.8;
   vec3 color = uCore * core + (uHalo * (halo + rays + ring) + uFlare * (flare + wave)) * (1.0 - smoothstep(0.85, 1.0, d));
   gl_FragColor = vec4(color * uFade, 1.0);
+#endif
 }
 `;
 
 export class ClaudeNode {
   readonly mesh: THREE.Mesh;
   readonly home = new THREE.Vector3();
-  private readonly material: THREE.ShaderMaterial;
+  /** Stable for the star's life, unlike its index in the layer's array, which shifts as stars come and go; a live update's replacement star keeps its predecessor's id (ClaudeLayer.adopt). Lets World follow a star by id across both, and is baked into its pick id. */
+  readonly id: number;
+  private readonly visibleMaterial: THREE.ShaderMaterial;
+  /** The id-pass variant of the same shaders (PICK defined), sharing every uniform with the visible material. */
+  private readonly pickMaterial: THREE.ShaderMaterial;
   private readonly target = new THREE.Vector3();
   private busyTarget = 0;
   /** 1 while the star is wanted; 0 once it is to go, which it does when it has faded. */
   private fadeTarget = 1;
 
-  constructor(home: THREE.Vector3, size: number, uniforms: SharedUniforms, fadeIn = false) {
+  constructor(id: number, home: THREE.Vector3, size: number, uniforms: SharedUniforms, fadeIn = false) {
+    this.id = id;
     this.home.copy(home);
     this.target.copy(home);
-    this.material = new THREE.ShaderMaterial({
+    const shaderUniforms = {
+      uTime: uniforms.uTime,
+      uViewportHeight: uniforms.uViewportHeight,
+      uSize: { value: size },
+      uBusy: { value: 0 },
+      uFlareAt: { value: -1e6 },
+      uFade: { value: fadeIn ? 0 : 1 },
+      uPickId: { value: PICK_CLAUDE_BASE + id },
+      uCore: { value: new THREE.Vector3(...PALETTE.claudeCore) },
+      uHalo: { value: new THREE.Vector3(...PALETTE.claudeHalo) },
+      uFlare: { value: new THREE.Vector3(...PALETTE.read) },
+    };
+    // Drawn last and without a depth test, in both passes: the star wins the pixel over a file behind it.
+    this.visibleMaterial = new THREE.ShaderMaterial({
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
-      uniforms: {
-        uTime: uniforms.uTime,
-        uSize: { value: size },
-        uBusy: { value: 0 },
-        uFlareAt: { value: -1e6 },
-        uFade: { value: fadeIn ? 0 : 1 },
-        uCore: { value: new THREE.Vector3(...PALETTE.claudeCore) },
-        uHalo: { value: new THREE.Vector3(...PALETTE.claudeHalo) },
-        uFlare: { value: new THREE.Vector3(...PALETTE.read) },
-      },
+      uniforms: shaderUniforms,
       blending: THREE.AdditiveBlending,
       transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.pickMaterial = new THREE.ShaderMaterial({
+      vertexShader: VERTEX,
+      fragmentShader: FRAGMENT,
+      uniforms: shaderUniforms,
+      defines: { PICK: '' },
       depthTest: false,
       depthWrite: false,
     });
     const geometry = new THREE.PlaneGeometry(2, 2);
     geometry.deleteAttribute('normal');
     geometry.deleteAttribute('uv');
-    this.mesh = new THREE.Mesh(geometry, this.material);
+    this.mesh = new THREE.Mesh(geometry, this.visibleMaterial);
     this.mesh.position.copy(home);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 10;
@@ -101,6 +140,11 @@ export class ClaudeNode {
 
   get position(): THREE.Vector3 {
     return this.mesh.position;
+  }
+
+  /** Switches the star to its id-pass shader for the 1×1 pick render, and back. */
+  setPickPass(on: boolean): void {
+    this.mesh.material = on ? this.pickMaterial : this.visibleMaterial;
   }
 
   /** A turn is running: the ring comes on wherever the star is. */
@@ -112,7 +156,7 @@ export class ClaudeNode {
   workOn(point: THREE.Vector3, kind: 'read' | 'edit', at: number): void {
     this.target.copy(point);
     this.busyTarget = 1;
-    const { uFlareAt, uFlare } = this.material.uniforms;
+    const { uFlareAt, uFlare } = this.visibleMaterial.uniforms;
     uFlareAt.value = at;
     (uFlare.value as THREE.Vector3).set(...PALETTE[kind]);
   }
@@ -147,7 +191,7 @@ export class ClaudeNode {
   }
 
   get gone(): boolean {
-    return this.fadeTarget === 0 && (this.material.uniforms.uFade.value as number) < 0.01;
+    return this.fadeTarget === 0 && (this.visibleMaterial.uniforms.uFade.value as number) < 0.01;
   }
 
   /** Continues from the star this one replaces: same spot, same destination unless it was heading home, same ring, flare and fade. */
@@ -155,8 +199,8 @@ export class ClaudeNode {
     this.mesh.position.copy(previous.mesh.position);
     this.busyTarget = previous.busyTarget;
     this.fadeTarget = previous.fadeTarget;
-    const uniforms = this.material.uniforms;
-    const before = previous.material.uniforms;
+    const uniforms = this.visibleMaterial.uniforms;
+    const before = previous.visibleMaterial.uniforms;
     uniforms.uBusy.value = before.uBusy.value;
     uniforms.uFlareAt.value = before.uFlareAt.value;
     uniforms.uFade.value = before.uFade.value;
@@ -166,7 +210,7 @@ export class ClaudeNode {
 
   /** Returns true while moving, flaring, fading, or fading its ring, so the frame loop keeps running. */
   update(dt: number): boolean {
-    const { uBusy: busy, uFlareAt, uFade: fade, uTime } = this.material.uniforms;
+    const { uBusy: busy, uFlareAt, uFade: fade, uTime } = this.visibleMaterial.uniforms;
     busy.value += (this.busyTarget - busy.value) * Math.min(1, dt * 3);
     fade.value += (this.fadeTarget - fade.value) * Math.min(1, dt * FADE_RATE);
     if (Math.abs(fade.value - this.fadeTarget) < 0.005) fade.value = this.fadeTarget;
@@ -179,7 +223,8 @@ export class ClaudeNode {
 
   dispose(): void {
     this.mesh.geometry.dispose();
-    this.material.dispose();
+    this.visibleMaterial.dispose();
+    this.pickMaterial.dispose();
   }
 }
 
@@ -225,6 +270,21 @@ export class ClaudeLayer {
     return (key === undefined ? undefined : this.assigned.get(key))?.position ?? this.stars[0]?.position ?? this.home;
   }
 
+  /** The stable id of the star drawn at `index` right now (a pick result), or undefined past the end of the array. */
+  idAt(index: number): number | undefined {
+    return this.stars[index]?.id;
+  }
+
+  /** Where the star `id` is, if it is still drawn: undefined once it has faded out and gone. */
+  positionById(id: number): THREE.Vector3 | undefined {
+    return this.stars.find((star) => star.id === id)?.position;
+  }
+
+  /** Id pass: every star draws its pick id (PICK_CLAUDE_BASE + its stable id, baked in at construction) instead of its light. */
+  setPickPass(on: boolean): void {
+    for (const star of this.stars) star.setPickPass(on);
+  }
+
   /** A turn is running somewhere: a star at home that no conversation has yet wears the ring, until it is taken or the turns end. */
   busy(): void {
     const free = this.stars.find((candidate) => !this.isAssigned(candidate) && !candidate.retiring);
@@ -267,7 +327,7 @@ export class ClaudeLayer {
       star.dispose();
     }
     this.stars = previous.stars.map((before) => {
-      const star = new ClaudeNode(before.home, this.size, this.uniforms);
+      const star = new ClaudeNode(before.id, before.home, this.size, this.uniforms);
       star.adopt(before);
       this.group.add(star.mesh);
       return star;
@@ -293,7 +353,7 @@ export class ClaudeLayer {
     const k = this.made++;
     const angle = k * Math.PI * (3 - Math.sqrt(5));
     const home = k === 0 ? this.home.clone() : this.home.clone().add(new THREE.Vector3(Math.cos(angle), 0.2 * Math.sin(angle * 1.7), Math.sin(angle)).multiplyScalar(this.size * HOME_RING));
-    const star = new ClaudeNode(home, this.size, this.uniforms, fadeIn);
+    const star = new ClaudeNode(k, home, this.size, this.uniforms, fadeIn);
     this.stars.push(star);
     this.group.add(star.mesh);
     return star;

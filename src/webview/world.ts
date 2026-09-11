@@ -90,6 +90,8 @@ export class World {
   private animateUntil = 0;
   private working = false;
   private hovered: Picked = { kind: 'none' };
+  /** The stable id (ClaudeNode.id) of the star the camera is asked to keep up with, or undefined. Survives a live update: the same id still finds its star after adopt. */
+  private followedStarId: number | undefined;
   /** Labels for one directory's contents, and which directory they are for. */
   private contentLabels: LabelSpec[] = [];
   private contentLabelsFor = -1;
@@ -168,6 +170,26 @@ export class World {
   /** Claude's stars drawn right now: one, plus one per further conversation with a turn under way. */
   get claudeStars(): number {
     return this.claude.count;
+  }
+
+  /** The stable id of the star a click found at `index` in the last pick, for the spark popup and Follow. */
+  claudeIdAt(index: number): number | undefined {
+    return this.claude.idAt(index);
+  }
+
+  /** Where the star `id` is right now, or undefined once it has faded out and gone. */
+  claudePosition(id: number): THREE.Vector3 | undefined {
+    return this.claude.positionById(id);
+  }
+
+  /** The star the camera follows, or undefined. */
+  get following(): number | undefined {
+    return this.followedStarId;
+  }
+
+  /** Starts or stops following a star; undefined stops. Carried over by a live update, so a turn's star keeps being followed across one. */
+  follow(id: number | undefined): void {
+    this.followedStarId = id;
   }
 
   /** A directory's workspace-relative path; the root reads as the workspace name. */
@@ -300,6 +322,11 @@ export class World {
       parts.push(`${share}% ${FILE_KIND_LABELS[FILE_KINDS[kind]]}`);
       return { title: this.clusterName(c), detail: `${parts.join(', ')}. Click to look inside.` };
     }
+    if (picked.kind === 'claude') {
+      const id = this.claude.idAt(picked.index);
+      const following = id !== undefined && id === this.followedStarId;
+      return { title: 'Claude', detail: following ? 'Following. Click for options.' : 'Click to follow, or see options.' };
+    }
     return undefined;
   }
 
@@ -387,7 +414,7 @@ export class World {
     this.bubbles.setPickPass(on);
     this.edges.lines.visible = !on;
     this.particles.points.visible = !on;
-    this.claude.group.visible = !on;
+    this.claude.setPickPass(on);
     this.mcp.group.visible = !on;
   }
 
@@ -435,6 +462,7 @@ export class World {
       else if (node(event.node) >= 0) this.pending.push({ event: { ...event, node: node(event.node) }, key, applyAt });
     }
     this.active = new Set(previous.active);
+    this.followedStarId = previous.followedStarId;
     this.lastKey = previous.lastKey;
     this.lastQueuedAt = previous.lastQueuedAt;
     this.animateUntil = previous.animateUntil;

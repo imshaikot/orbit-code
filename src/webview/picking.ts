@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { PICK_CLUSTER_BASE, type SharedUniforms } from './uniforms';
+import { PICK_CLAUDE_BASE, PICK_CLUSTER_BASE, type SharedUniforms } from './uniforms';
 
-export type Picked = { kind: 'node'; index: number } | { kind: 'cluster'; index: number } | { kind: 'none' };
+/** What is under a pixel: a file, a directory bubble, one of Claude's stars (its index in the layer), or nothing. */
+export type Picked = { kind: 'node'; index: number } | { kind: 'cluster'; index: number } | { kind: 'claude'; index: number } | { kind: 'none' };
 
 /**
  * GPU picking. The id pass renders the scene's own meshes (id shaders swapped in)
@@ -65,6 +66,7 @@ export class Picker {
       await renderer.readRenderTargetPixelsAsync(this.target, 0, 0, 1, 1, this.pixel);
       const id = (this.pixel[0] << 16) | (this.pixel[1] << 8) | this.pixel[2];
       if (id === 0) return { kind: 'none' };
+      if (id >= PICK_CLAUDE_BASE) return { kind: 'claude', index: id - PICK_CLAUDE_BASE };
       return id >= PICK_CLUSTER_BASE ? { kind: 'cluster', index: id - PICK_CLUSTER_BASE } : { kind: 'node', index: id - 1 };
     } finally {
       this.inFlight = false;
