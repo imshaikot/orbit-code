@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Orbit: this repository",
+      "name": "Orbit Code: this repository",
       "type": "extensionHost",
       "request": "launch",
       "args": ["--extensionDevelopmentPath=${workspaceFolder}", "--disable-extensions", "${workspaceFolder}"],
@@ -10,7 +10,7 @@
       "preLaunchTask": "orbit: build"
     },
     {
-      "name": "Orbit: this repository, reindexed",
+      "name": "Orbit Code: this repository, reindexed",
       "type": "extensionHost",
       "request": "launch",
       "args": ["--extensionDevelopmentPath=${workspaceFolder}", "--disable-extensions", "${workspaceFolder}"],

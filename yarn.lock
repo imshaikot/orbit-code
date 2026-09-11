@@ -1322,9 +1322,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"orbit@workspace:.":
+"orbit-code@workspace:.":
   version: 0.0.0-use.local
-  resolution: "orbit@workspace:."
+  resolution: "orbit-code@workspace:."
   dependencies:
     "@codemirror/autocomplete": "npm:6.20.3"
     "@codemirror/commands": "npm:6.11.0"

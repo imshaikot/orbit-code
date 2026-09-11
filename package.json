@@ -1,6 +1,6 @@
 {
-  "name": "orbit",
-  "displayName": "Orbit",
+  "name": "orbit-code",
+  "displayName": "Orbit Code",
   "description": "Your codebase as a 3D dependency graph, with a live Claude Code session moving through it.",
   "version": "0.2.0",
   "publisher": "local",
