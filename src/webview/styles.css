@@ -1043,9 +1043,11 @@ select:focus-visible {
   cursor: grabbing;
 }
 
+/* Glyphs are drawn only inside the field, and so are their buttons and names. */
 .constellation-targets {
   position: absolute;
   inset: 0;
+  overflow: hidden;
 }
 
 .skill-node,

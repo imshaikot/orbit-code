@@ -1,7 +1,7 @@
 import type { AgentCatalog, ConversationSummary, HistorySnapshot, McpAction, McpServerInfo, SkillInfo, SkillScope } from '../../shared/protocol';
 import { type ForceLink, ForceLayout, type ForceNode } from '../constellation/forceLayout';
 import type { CoreInstance, GlyphInstance, LinkInstance } from '../constellation/glyphs';
-import { ConstellationView } from '../constellation/view';
+import { ConstellationView, type FitPoint } from '../constellation/view';
 import { MCP_STATUS_COLORS, PALETTE, type Rgb, SCOPE_COLORS, cssColor, hex } from '../palette';
 import { button, el } from './dom';
 import { plural, relativeTime } from './turns';
@@ -81,6 +81,13 @@ const SHARED = hex('#d9ceff');
 const MAX_ZOOM = 4;
 /** What a glyph that fails the filter fades to. */
 const DIMMED = 0.1;
+/** How far the graph sways about the vertical, either way (radians): the timeline less, so it reads left to right. */
+const SKILLS_SWAY = 0.4;
+const HISTORY_SWAY = 0.16;
+const ELEVATION = 0.18;
+/** CSS pixels kept clear inside the field's edges, for the names under the glyphs. */
+const FIT_MARGIN = { x: 30, y: 22 };
+
 /** How an MCP server connected, as the MCP constellation groups and colours it. */
 type ServerGroup = keyof typeof MCP_STATUS_COLORS;
 const GROUPS: readonly ServerGroup[] = ['connected', 'pending', 'needs-auth', 'failed', 'disabled'];
@@ -461,14 +468,22 @@ export class Constellation {
     this.view.place(window.innerWidth, window.innerHeight, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     let across = 6;
     let up = 4;
+    // However few the glyphs, the field frames at least this much.
+    const points: FitPoint[] = [
+      { x: -across, y: -up, z: 0, pad: 0 },
+      { x: across, y: up, z: 0, pad: 0 },
+    ];
     for (const item of this.items) {
       if (item === this.drag?.item) continue;
       const pad = item.kind === 'hub' ? 2.5 : item.size * 1.4;
       across = Math.max(across, Math.hypot(item.node.x, item.node.z) + pad);
       up = Math.max(up, Math.abs(item.node.y) + pad);
+      points.push({ x: item.node.x, y: item.node.y, z: item.node.z, pad });
     }
     this.extent = { across, up };
-    const fit = this.view.fitDistance(across * 1.04, up * 1.15, 2);
+    const sway = this.current === 'history' ? HISTORY_SWAY : SKILLS_SWAY;
+    // Framed for the whole sway, so the distance holds steady while the graph turns.
+    const fit = this.view.fitDistance(points, [-sway, -sway / 2, 0, sway / 2, sway], ELEVATION, FIT_MARGIN);
     // Zooming in brings the camera closer to the spot zoomed toward, and the graph holds still meanwhile.
     const zoomEase = Math.min(1, dt * 8);
     this.zoom += (this.zoomTarget - this.zoom) * zoomEase;
@@ -479,9 +494,9 @@ export class Constellation {
     this.centre.z += (this.centreTarget.z - this.centre.z) * centreEase;
     const wanted = fit / this.zoom;
     this.distance = this.distance > 0 ? this.distance + (wanted - this.distance) * Math.min(1, dt * (this.zoom === this.zoomTarget ? 2.5 : 8)) : wanted;
-    // The graph turns slowly, and holds still while a glyph is pointed at or held, or the view is zoomed in. The timeline turns less, so it reads left to right.
+    // The graph turns slowly, and holds still while a glyph is pointed at or held, or the view is zoomed in.
     if (!this.drag && !this.hovered && this.zoomTarget <= 1.02 && !reducedMotion()) this.orbit += dt * 0.09;
-    this.view.aim(this.distance, Math.sin(this.orbit) * (this.current === 'history' ? 0.16 : 0.4), 0.18, this.centre);
+    this.view.aim(this.distance, Math.sin(this.orbit) * sway, ELEVATION, this.centre);
     const labelScale = Math.min(1.7, Math.max(1, Math.sqrt(this.zoom)));
     if (Math.abs(labelScale - this.labelScale) > 0.005) {
       this.labelScale = labelScale;
@@ -515,7 +530,8 @@ export class Constellation {
       const lit = a === focus || b === focus ? 2 : 1;
       return { from: a.node, to: b.node, color: link.color, alpha: link.alpha * Math.min(shown(a), shown(b)) * Math.min(a.dim, b.dim) * lit, width: link.width, flow: link.flow, seed: link.seed };
     });
-    this.view.render(this.time, { tesseracts, gyroscopes, stations }, cores, links);
+    // Kept to the field, but for a skill being dragged out of it to the composer.
+    this.view.render(this.time, { tesseracts, gyroscopes, stations }, cores, links, !this.drag?.moved);
     this.placeTargets(rect, fade);
     this.frames++;
     return true;

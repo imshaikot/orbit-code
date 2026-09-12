@@ -8,6 +8,11 @@ export interface Field {
   height: number;
 }
 
+/** A point to frame in the field, with the radius around it that must fit too. */
+export interface FitPoint extends Point {
+  pad: number;
+}
+
 /** Glyphs by kind: a tesseract per skill, a gyroscope per conversation, a 16-cell per MCP server. */
 export interface Glyphs {
   tesseracts: readonly GlyphInstance[];
@@ -61,6 +66,7 @@ export class ConstellationView {
       return false;
     }
     this.renderer.setClearColor(0x000000, 0);
+    this.renderer.autoClear = false;
     this.meshes = {
       tesseracts: new GlyphMesh(tesseractTemplate(), this.uniforms, 0.55, 1.5),
       gyroscopes: new GlyphMesh(gyroscopeTemplate(), this.uniforms, 0.4, 1.2),
@@ -100,11 +106,31 @@ export class ConstellationView {
     this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
   }
 
-  /** How far away the camera must be for a box around the origin (half extents across, up, and in depth) to fit the field. */
-  fitDistance(across: number, up: number, depth: number): number {
-    const vertical = THREE.MathUtils.degToRad(FOV) / 2;
-    const horizontal = Math.atan(Math.tan(vertical) * this.camera.aspect);
-    return Math.max(across / Math.tan(horizontal), up / Math.tan(vertical)) + depth;
+  /**
+   * How far from the origin the camera must be for every point, and `pad` world units around it, to sit inside the field
+   * `margin` CSS pixels clear of its edges, looking from each of `angles` about the vertical at `elevation` (radians).
+   * Points turned toward the camera come out larger, so a point's depth counts as well as its offset.
+   */
+  fitDistance(points: readonly FitPoint[], angles: readonly number[], elevation: number, margin: { x: number; y: number }): number {
+    const vertical = Math.tan(THREE.MathUtils.degToRad(FOV) / 2);
+    const { width, height } = this.field;
+    const tanUp = vertical * Math.max(0.3, 1 - (2 * margin.y) / Math.max(1, height));
+    const tanAcross = vertical * this.camera.aspect * Math.max(0.3, 1 - (2 * margin.x) / Math.max(1, width));
+    const ce = Math.cos(elevation);
+    const se = Math.sin(elevation);
+    let distance = 1;
+    for (const angle of angles) {
+      const ca = Math.cos(angle);
+      const sa = Math.sin(angle);
+      for (const { x, y, z, pad } of points) {
+        // The point in the camera's own axes: right, up, and toward the camera.
+        const across = x * ca - z * sa;
+        const up = -x * sa * se + y * ce - z * ca * se;
+        const toward = x * sa * ce + y * se + z * ca * ce + pad;
+        distance = Math.max(distance, (Math.abs(across) + pad) / tanAcross + toward, (Math.abs(up) + pad) / tanUp + toward);
+      }
+    }
+    return distance;
   }
 
   /** Looks at `centre` (the origin unless zoomed toward a spot) from `distance` away, turned `angle` about the vertical and raised `elevation` (radians). */
@@ -118,7 +144,8 @@ export class ConstellationView {
     this.camera.updateMatrixWorld();
   }
 
-  render(time: number, glyphs: Glyphs, cores: readonly CoreInstance[], links: readonly LinkInstance[]): void {
+  /** Draws a frame; with `clip`, only inside the field, so nothing zoomed or turned past its edges shows outside the panel. */
+  render(time: number, glyphs: Glyphs, cores: readonly CoreInstance[], links: readonly LinkInstance[], clip: boolean): void {
     if (!this.ready || !this.renderer || !this.meshes || this.canvas.hidden) return;
     this.uniforms.uTime.value = time;
     this.meshes.tesseracts.set(glyphs.tesseracts);
@@ -126,7 +153,17 @@ export class ConstellationView {
     this.meshes.stations.set(glyphs.stations ?? []);
     this.meshes.cores.set(cores);
     this.meshes.links.set(links);
-    this.renderer.render(this.scene, this.camera);
+    const renderer = this.renderer;
+    // The scissor limits the clear too, so the whole canvas is cleared first.
+    renderer.setScissorTest(false);
+    renderer.clear();
+    if (clip) {
+      const f = this.field;
+      renderer.setScissor(f.left, this.viewport.height - f.top - f.height, f.width, f.height);
+      renderer.setScissorTest(true);
+    }
+    renderer.render(this.scene, this.camera);
+    renderer.setScissorTest(false);
   }
 
   /** Where a point is on screen (client pixels), and how many pixels `radius` world units span there. */
