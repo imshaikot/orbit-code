@@ -169,9 +169,15 @@ export type ActivityEvent =
 export const PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
+/** Claude Code effort levels (`--effort`), least to most. */
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type EffortLevel = (typeof EFFORT_LEVELS)[number];
+
 export interface SessionOptions {
   /** Model alias or id; '' means the agent's default. */
   model: string;
+  /** How hard the agent thinks; '' passes no --effort, so the user's own settings apply. */
+  effort: EffortLevel | '';
   permissionMode: PermissionMode;
 }
 
@@ -245,6 +251,8 @@ export interface ModelChoice {
   value: string;
   label: string;
   description?: string;
+  /** The effort levels the model takes: empty when it takes none, absent when the agent did not say. */
+  efforts?: EffortLevel[];
 }
 
 /** `project`: the workspace's .claude/skills; `user`: the user's own (~/.claude/skills); `plugin`: from an installed plugin. */

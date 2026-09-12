@@ -96,7 +96,7 @@ function open(): Conversation {
   const key = `sim-${++keys}`;
   const conversation: Conversation = {
     key,
-    state: { key, phase: 'idle', agent: 'Harness agent', model: 'scripted', options: { model: '', permissionMode: 'default' }, turns: 0, costUsd: 0 },
+    state: { key, phase: 'idle', agent: 'Harness agent', model: 'scripted', options: { model: '', effort: '', permissionMode: 'default' }, turns: 0, costUsd: 0 },
     timers: [],
     nextEntry: 1,
   };

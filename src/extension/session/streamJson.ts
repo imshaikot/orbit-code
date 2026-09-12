@@ -12,11 +12,12 @@
 //   result                end of a turn; total_cost_usd is cumulative for the process
 //
 // Answers to control requests, checked against the same version:
-//   initialize   { commands: [{name, description, argumentHint}], models: [{value, displayName, description, …}], agents, account, … }
+//   initialize   { commands: [{name, description, argumentHint}], models: [{value, displayName, description, supportsEffort,
+//                supportedEffortLevels, …}], agents, account, … }; a model without effort levels (Haiku) has neither field.
 //                "default" is the model the CLI picks by itself; skills are among the commands, plugin ones as plugin:name
 //   mcp_status   { mcpServers: [{name, status, scope, config, serverInfo, tools: [{name}]}] }; config can hold credentials
 
-import type { McpServerInfo, ModelChoice } from '../../shared/protocol';
+import { EFFORT_LEVELS, type EffortLevel, type McpServerInfo, type ModelChoice } from '../../shared/protocol';
 import { type PermissionUpdate, parsePermissionUpdates } from './permissions';
 
 /** How a permission decision is classed for the CLI's telemetry: a plain allow, an allow with "don't ask again", a deny. */
@@ -198,13 +199,22 @@ export function parseControlAnswer(line: string): { requestId: string; ok: boole
 /** `initialize` → the models the CLI offers. Its "default" becomes '', which passes no --model. */
 export function parseModels(body: Json | undefined): ModelChoice[] {
   const seen = new Set<string>();
-  return (Array.isArray(body?.models) ? body.models : []).flatMap((model) => {
+  const models = Array.isArray(body?.models) ? body.models : [];
+  // Once any model says whether it takes an effort level, one that says nothing takes none; a version that never says leaves it unknown.
+  const saysEffort = models.some((model) => isObject(model) && 'supportsEffort' in model);
+  return models.flatMap((model) => {
     if (!isObject(model) || typeof model.value !== 'string') return [];
     const value = model.value === 'default' ? '' : model.value;
     if (seen.has(value)) return [];
     seen.add(value);
-    return [{ value, label: string(model.displayName) ?? model.value, description: string(model.description) }];
+    const efforts = model.supportsEffort === true ? effortLevels(model.supportedEffortLevels) : saysEffort ? [] : undefined;
+    return [{ value, label: string(model.displayName) ?? model.value, description: string(model.description), ...(efforts ? { efforts } : {}) }];
   });
+}
+
+/** The levels Orbit knows, in order; all of them when a model takes effort without listing levels. */
+function effortLevels(levels: unknown): EffortLevel[] {
+  return Array.isArray(levels) ? EFFORT_LEVELS.filter((level) => levels.includes(level)) : [...EFFORT_LEVELS];
 }
 
 /** `initialize` → every slash command the CLI offers, skills among them. */

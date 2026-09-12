@@ -23,7 +23,7 @@ export interface SessionActions {
 const MAX_TURNS = 100;
 
 /** Before the host has said anything. */
-const NO_SESSION: SessionState = { key: '', phase: 'unavailable', options: { model: '', permissionMode: 'default' }, turns: 0, costUsd: 0, error: 'Looking for Claude Code' };
+const NO_SESSION: SessionState = { key: '', phase: 'unavailable', options: { model: '', effort: '', permissionMode: 'default' }, turns: 0, costUsd: 0, error: 'Looking for Claude Code' };
 
 /** One conversation as the HUD keeps it: the host's latest state and its turns. */
 interface Conversation {

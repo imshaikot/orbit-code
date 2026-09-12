@@ -188,7 +188,7 @@ export class Conversation {
   private startAgent(cwd: string, options: SessionOptions): AgentProcess {
     let agent: AgentProcess | undefined = undefined;
     agent = this.context.backend.start(
-      { cwd, model: options.model, permissionMode: options.permissionMode, resume: this.sessionId },
+      { cwd, model: options.model, effort: options.effort, permissionMode: options.permissionMode, resume: this.sessionId },
       {
         // A stopped process can still flush output; only the current one is listened to.
         event: (event) => {
@@ -204,7 +204,7 @@ export class Conversation {
     this.agentCost = 0;
     this.context.log.info(
       `agent process started: ${this.sessionId ? `resuming ${this.sessionId}` : 'new conversation'}, ` +
-        `model ${options.model || 'default'}, permissions ${options.permissionMode}`,
+        `model ${options.model || 'default'}, effort ${options.effort || 'default'}, permissions ${options.permissionMode}`,
     );
     return agent;
   }
@@ -299,7 +299,7 @@ export class Conversation {
 }
 
 function sameOptions(a: SessionOptions | undefined, b: SessionOptions): boolean {
-  return a !== undefined && a.model === b.model && a.permissionMode === b.permissionMode;
+  return a !== undefined && a.model === b.model && a.effort === b.effort && a.permissionMode === b.permissionMode;
 }
 
 function lastLine(text: string): string {

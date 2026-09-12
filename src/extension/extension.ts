@@ -25,7 +25,7 @@ export function activate(context: vscode.ExtensionContext): OrbitApi {
   const session = new SessionService(
     new ClaudeCliBackend(() => settings.claude),
     log,
-    { model: settings.claude.model, permissionMode: settings.claude.permissionMode },
+    { model: settings.claude.model, effort: settings.claude.effort, permissionMode: settings.claude.permissionMode },
     () => ({ cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, trusted: vscode.workspace.isTrusted }),
   );
   const controller = new OrbitController(context.extensionUri, log, graphs, session, new ConversationHistory());
@@ -71,7 +71,7 @@ function applySettings(previous: OrbitSettings, next: OrbitSettings, session: Se
   const { claude: before } = previous;
   const { claude: after } = next;
   if (after.path !== before.path || after.extraArgs.join('\0') !== before.extraArgs.join('\0')) void session.refresh();
-  if (after.model !== before.model || after.permissionMode !== before.permissionMode) {
-    session.setOptions({ model: after.model, permissionMode: after.permissionMode });
+  if (after.model !== before.model || after.effort !== before.effort || after.permissionMode !== before.permissionMode) {
+    session.setOptions({ model: after.model, effort: after.effort, permissionMode: after.permissionMode });
   }
 }

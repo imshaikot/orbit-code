@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { toColumnar } from '../shared/columnar';
 import { type ConversationSummary, type FileReply, type HostToWebview, PERMISSION_ANSWERS, PROTOCOL_VERSION, type SessionOptions, type SessionState, type SessionsSnapshot, type WebviewToHost } from '../shared/protocol';
 import { isWorkspaceId } from '../shared/workspacePath';
-import { isModelName, isPermissionMode } from './config';
+import { isEffort, isModelName, isPermissionMode } from './config';
 import { FileActions } from './fileActions';
 import type { GraphService, GraphStatus, LoadedGraph } from './graph/graphService';
 import { OrbitPanel } from './panel/orbitPanel';
@@ -285,6 +285,7 @@ export class OrbitController implements vscode.Disposable {
   private setOptions(options: Partial<SessionOptions>): void {
     const next: Partial<SessionOptions> = {};
     if (isModelName(options.model)) next.model = options.model;
+    if (isEffort(options.effort)) next.effort = options.effort;
     // bypassPermissions is honoured only from VS Code settings, never from the webview.
     if (isPermissionMode(options.permissionMode) && options.permissionMode !== 'bypassPermissions') next.permissionMode = options.permissionMode;
     this.session.setOptions(next);

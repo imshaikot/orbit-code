@@ -179,7 +179,7 @@ export class SessionService implements vscode.Disposable {
   /** Options apply from the next prompt of any conversation; a running process is then restarted and resumes its conversation. */
   setOptions(options: Partial<SessionOptions>): void {
     const next = { ...this.options, ...options };
-    if (next.model === this.options.model && next.permissionMode === this.options.permissionMode) return;
+    if (next.model === this.options.model && next.effort === this.options.effort && next.permissionMode === this.options.permissionMode) return;
     this.options = next;
     for (const conversation of this.conversations) this.stateEmitter.fire(conversation.state);
   }

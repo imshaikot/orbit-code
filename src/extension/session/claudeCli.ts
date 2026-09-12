@@ -60,6 +60,8 @@ export class ClaudeCliBackend implements SessionBackend {
     const executable = this.executable ?? (expandHome(this.settings().path) || 'claude');
     const args = [...BASE_ARGS];
     if (options.model) args.push('--model', options.model);
+    // A model that takes no effort level (Haiku) runs as it would without it; the CLI says nothing.
+    if (options.effort) args.push('--effort', options.effort);
     if (options.permissionMode !== 'default') args.push('--permission-mode', options.permissionMode);
     if (options.resume) args.push('--resume', options.resume);
     args.push(...this.settings().extraArgs);

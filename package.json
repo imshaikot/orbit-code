@@ -99,6 +99,27 @@
           "default": "",
           "markdownDescription": "Model alias or id passed to Claude Code as `--model`, for example `opus` or `sonnet`. Empty uses Claude Code's own default. The picker in the Orbit Code panel overrides this until the window reloads."
         },
+        "orbit.claude.effort": {
+          "type": "string",
+          "enum": [
+            "",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "enumDescriptions": [
+            "Claude Code's own default, from your settings.",
+            "Quick answers with the least thinking.",
+            "A balance of speed and depth.",
+            "Thinks problems through.",
+            "Deeper reasoning for hard problems.",
+            "The deepest reasoning: slowest, and the most tokens."
+          ],
+          "default": "",
+          "markdownDescription": "Effort level passed to Claude Code as `--effort`: how much Claude thinks before answering. Empty uses Claude Code's own default. A model that takes no effort level, such as Haiku, ignores it. The effort meter in the Orbit Code panel overrides this until the window reloads."
+        },
         "orbit.claude.permissionMode": {
           "type": "string",
           "enum": [

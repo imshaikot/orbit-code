@@ -1,4 +1,4 @@
-import type { McpServerInfo, ModelChoice, PermissionAnswer, PermissionMode, SkillInfo } from '../../shared/protocol';
+import type { EffortLevel, McpServerInfo, ModelChoice, PermissionAnswer, PermissionMode, SkillInfo } from '../../shared/protocol';
 import type { PermissionUpdate } from './permissions';
 import type { AgentEvent } from './streamJson';
 
@@ -17,6 +17,8 @@ export interface AgentStartOptions {
   cwd: string;
   /** '' means the agent's default. */
   model: string;
+  /** '' means the agent's default. */
+  effort: EffortLevel | '';
   permissionMode: PermissionMode;
   /** Continue this conversation instead of starting a new one. */
   resume?: string;
