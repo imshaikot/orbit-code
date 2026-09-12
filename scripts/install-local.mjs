@@ -40,7 +40,6 @@ const installed =
     'package',
     '--no-dependencies',
     '--allow-missing-repository',
-    '--skip-license',
     '--no-rewrite-relative-links',
     '--out',
     vsix,

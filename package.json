@@ -5,7 +5,8 @@
   "version": "0.2.0",
   "publisher": "local",
   "private": true,
-  "license": "UNLICENSED",
+  "author": "Shahriar M Abu Hena",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.100.0"
   },
