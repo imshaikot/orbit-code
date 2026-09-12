@@ -442,9 +442,9 @@ try {
     // Attach to prompt: the card closes and the drawer opens with the file as a chip; the chip and the drawer are put away again.
     await clickOn('.file-menu .fm-item-attach');
     await sleep(600);
-    const attached = await evaluate(`({ menuOpen: __orbit.fileMenu().open, drawerOpen: document.querySelector('.drawer').dataset.open === 'true', chips: [...document.querySelectorAll('.file-chip')].map((chip) => chip.dataset.path) })`);
+    const attached = await evaluate(`({ menuOpen: __orbit.fileMenu().open, drawerOpen: document.querySelector('.drawer').dataset.open === 'true', chips: [...document.querySelectorAll('.drawer .file-chip')].map((chip) => chip.dataset.path) })`);
     report.checks.fileMenu.attach = { ...attached, ok: !attached.menuOpen && attached.drawerOpen && attached.chips.length === 1 && attached.chips[0] === changed.path };
-    await evaluate(`document.querySelector('.file-chip-remove')?.click()`);
+    await evaluate(`document.querySelector('.drawer .file-chip-remove')?.click()`);
     await key('Escape', 'Escape', 27);
     await sleep(500);
     await openCard(first);
@@ -770,12 +770,12 @@ try {
   }
   await mouse('mouseReleased', tab.x, tab.y - 240);
   await sleep(600);
-  const drawerOpened = await evaluate(`document.querySelector('.drawer').dataset.open === 'true' && document.activeElement === document.querySelector('.composer-input')`);
+  const drawerOpened = await evaluate(`document.querySelector('.drawer').dataset.open === 'true' && document.activeElement === document.querySelector('.drawer .composer-input')`);
   await screenshot('4a-drawer-open.png');
   await cdp.send('Input.insertText', { text: prompt });
   await key('Enter', 'Enter', 13);
   await sleep(240);
-  const inFlight = await evaluate(`({ launching: !!document.querySelector('.launch'), sheetOpen: document.querySelector('.drawer').dataset.open === 'true', input: document.querySelector('.composer-input').value })`);
+  const inFlight = await evaluate(`({ launching: !!document.querySelector('.launch'), sheetOpen: document.querySelector('.drawer').dataset.open === 'true', input: document.querySelector('.drawer .composer-input').value })`);
   await screenshot('4b-launch.png');
   await sleep(900);
   const landed = await evaluate(`(() => {
@@ -793,7 +793,7 @@ try {
     await screenshot('4c-bubble-hover.png');
     await click(landed.x, landed.y);
     await sleep(700);
-    view = await evaluate(`({ open: !document.querySelector('.session-view').hidden, title: document.querySelector('.sv-title').textContent, action: document.querySelector('.sv-action').textContent })`);
+    view = await evaluate(`({ open: !document.querySelector('.session-view').hidden, title: document.querySelector('.sv-title').textContent, action: document.querySelector('.sv-footer .composer-action').textContent })`);
     await screenshot('4d-session-view.png');
     await evaluate(`__host.ask('Bash', 'npm run build')`);
     await sleep(300);
@@ -870,7 +870,7 @@ try {
   const drawerWhileBusy = await evaluate(`(() => { const tab = document.querySelector('.drawer-tab').getBoundingClientRect(); return { x: tab.left + tab.width / 2, y: tab.top + 20 }; })()`);
   await click(drawerWhileBusy.x, drawerWhileBusy.y);
   await sleep(500);
-  const composerWhileBusy = await evaluate(`({ open: document.querySelector('.drawer').dataset.open === 'true', inputEnabled: !document.querySelector('.composer-input').disabled, context: document.querySelector('.sheet-context-text').textContent })`);
+  const composerWhileBusy = await evaluate(`({ open: document.querySelector('.drawer').dataset.open === 'true', inputEnabled: !document.querySelector('.drawer .composer-input').disabled, context: document.querySelector('.sheet-context-text').textContent })`);
   await cdp.send('Input.insertText', { text: secondPrompt });
   await key('Enter', 'Enter', 13);
   // The second conversation's star appears with its first file read, a couple of steps into its turn.
@@ -918,14 +918,14 @@ try {
   let at = await tabAt();
   await click(at.x, at.y);
   await sleep(600);
-  const models = await evaluate(`[...document.querySelector('.composer-select').options].map((option) => option.textContent)`);
+  const models = await evaluate(`[...document.querySelector('.drawer .composer-select').options].map((option) => option.textContent)`);
 
   // Effort: a click on a bar picks that level and reaches the host, an arrow key moves it, a model that takes no effort
   // level (Haiku, as 2.1.267 reports it) dims the meter and keeps the pick, and the ring goes back to Claude Code's default.
-  const effortState = `(() => { const m = document.querySelector('.composer-effort'); return { level: m.dataset.level, offered: m.dataset.offered, lit: m.querySelectorAll('.effort-bar[data-lit="true"]').length, checked: m.querySelector('[aria-checked="true"]')?.dataset.effort ?? null, host: __host.state().options.effort, disabled: [...m.querySelectorAll('.effort-bar')].every((bar) => bar.disabled) }; })()`;
-  const pickModel = (value) => evaluate(`(() => { const s = document.querySelector('.composer-select'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change')); })()`);
+  const effortState = `(() => { const m = document.querySelector('.drawer .composer-effort'); return { level: m.dataset.level, offered: m.dataset.offered, lit: m.querySelectorAll('.effort-bar[data-lit="true"]').length, checked: m.querySelector('[aria-checked="true"]')?.dataset.effort ?? null, host: __host.state().options.effort, disabled: [...m.querySelectorAll('.effort-bar')].every((bar) => bar.disabled) }; })()`;
+  const pickModel = (value) => evaluate(`(() => { const s = document.querySelector('.drawer .composer-select'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change')); })()`);
   const effortInitial = await evaluate(effortState);
-  at = await centreOf('.effort-bar[data-effort="high"]');
+  at = await centreOf('.drawer .effort-bar[data-effort="high"]');
   await click(at.x, at.y);
   await sleep(600);
   const effortClicked = await evaluate(effortState);
@@ -939,11 +939,11 @@ try {
   await screenshot('6j-effort-not-offered.png');
   await pickModel('');
   await sleep(400);
-  at = await centreOf('.effort-auto');
+  at = await centreOf('.drawer .effort-auto');
   await click(at.x, at.y);
   await sleep(400);
   const effortBack = await evaluate(effortState);
-  await evaluate(`document.querySelector('.composer-input').focus()`);
+  await evaluate(`document.querySelector('.drawer .composer-input').focus()`);
   report.checks.effort = {
     initial: effortInitial,
     haiku: effortHaiku,
@@ -952,16 +952,16 @@ try {
     dimmedForHaiku: effortHaiku.offered === 'false' && effortHaiku.disabled && effortHaiku.host === 'xhigh',
     backToAuto: effortBack.level === 'auto' && effortBack.checked === '' && effortBack.host === '' && effortBack.lit === 0,
   };
-  at = await centreOf('.composer-toggle[data-kind="skills"]');
+  at = await centreOf('.drawer .composer-toggle[data-kind="skills"]');
   await click(at.x, at.y);
   await sleep(2600);
-  const skillsOpen = await evaluate(`({ ...__orbit.constellation(), nodes: document.querySelectorAll('.skill-node').length, shown: document.querySelectorAll('.skill-node[data-shown="true"]').length, pressed: document.querySelector('.composer-toggle[data-kind="skills"]').getAttribute('aria-pressed') })`);
+  const skillsOpen = await evaluate(`({ ...__orbit.constellation(), nodes: document.querySelectorAll('.skill-node').length, shown: document.querySelectorAll('.skill-node[data-shown="true"]').length, pressed: document.querySelector('.drawer .composer-toggle[data-kind="skills"]').getAttribute('aria-pressed') })`);
   await screenshot('6a-skills.png');
   const grab = await evaluate(`(() => {
     const nodes = [...document.querySelectorAll('.skill-node[data-shown="true"]')];
     const node = nodes.find((n) => n.dataset.skill === 'graph-pipeline') ?? nodes[0];
     if (!node) return null;
-    const r = node.getBoundingClientRect(); const input = document.querySelector('.composer-input').getBoundingClientRect();
+    const r = node.getBoundingClientRect(); const input = document.querySelector('.drawer .composer-input').getBoundingClientRect();
     return { skill: node.dataset.skill, x: r.left + r.width / 2, y: r.top + r.height / 2, tx: input.left + input.width * 0.4, ty: input.top + input.height / 2 };
   })()`);
   let skillDrag = null;
@@ -974,17 +974,17 @@ try {
       await sleep(24);
     }
     await sleep(120);
-    const midDrag = await evaluate(`({ drop: document.querySelector('.composer').dataset.drop ?? null, label: !document.querySelector('.skill-drag-label').hidden })`);
+    const midDrag = await evaluate(`({ drop: document.querySelector('.drawer .composer').dataset.drop ?? null, label: !document.querySelector('.skill-drag-label').hidden })`);
     await screenshot('6b-skill-drag.png');
     await mouse('mouseReleased', grab.tx, grab.ty);
     await sleep(700);
-    skillDrag = { skill: grab.skill, overComposer: midDrag.drop === 'over', dragLabel: midDrag.label, chips: await evaluate(`[...document.querySelectorAll('.skill-chip')].map((chip) => chip.dataset.skill)`) };
+    skillDrag = { skill: grab.skill, overComposer: midDrag.drop === 'over', dragLabel: midDrag.label, chips: await evaluate(`[...document.querySelectorAll('.drawer .skill-chip')].map((chip) => chip.dataset.skill)`) };
     await screenshot('6c-skill-attached.png');
     await cdp.send('Input.insertText', { text: 'Use the attached skill' });
     await key('Enter', 'Enter', 13);
     await sleep(500);
     skillDrag.sent = await evaluate('__host.skillPrompts.at(-1)');
-    skillDrag.chipsClearedOnSend = await evaluate(`document.querySelectorAll('.skill-chip').length === 0`);
+    skillDrag.chipsClearedOnSend = await evaluate(`document.querySelectorAll('.drawer .skill-chip').length === 0`);
     await waitFor(evaluate, `__host.state().phase === 'idle'`, 12_000);
     await sleep(400);
   }
@@ -995,12 +995,12 @@ try {
   at = await tabAt();
   await click(at.x, at.y);
   await sleep(600);
-  const filesButton = await centreOf('.composer-toggle[data-kind="files"]');
+  const filesButton = await centreOf('.drawer .composer-toggle[data-kind="files"]');
   let attachments = null;
   if (filesButton) {
     await click(filesButton.x, filesButton.y);
     await sleep(700);
-    const chips = await evaluate(`[...document.querySelectorAll('.file-chip')].map((chip) => chip.dataset.path)`);
+    const chips = await evaluate(`[...document.querySelectorAll('.drawer .file-chip')].map((chip) => chip.dataset.path)`);
     await screenshot('6k-files-attached.png');
     await cdp.send('Input.insertText', { text: 'Read the attached files' });
     await key('Enter', 'Enter', 13);
@@ -1009,7 +1009,7 @@ try {
       pickAsked: (await evaluate('__host.received')).includes('pickFiles'),
       chips,
       sent: await evaluate('__host.skillPrompts.at(-1)'),
-      chipsClearedOnSend: await evaluate(`document.querySelectorAll('.file-chip').length === 0`),
+      chipsClearedOnSend: await evaluate(`document.querySelectorAll('.drawer .file-chip').length === 0`),
       inTranscript: await evaluate(`[...document.querySelectorAll('.transcript .t-prompt')].at(-1)?.querySelectorAll('.t-attached').length ?? 0`),
       linked: await evaluate(`[...document.querySelectorAll('.transcript .t-prompt')].at(-1)?.querySelectorAll('.t-attached[data-file]').length ?? 0`),
     };
@@ -1026,7 +1026,7 @@ try {
   await sleep(600);
   await cdp.send('Input.insertText', { text: '/gra' });
   await sleep(1400);
-  const slashOpen = await evaluate(`({ ...__orbit.constellation(), shown: [...document.querySelectorAll('.skill-node[data-shown="true"]')].map((n) => n.dataset.skill), pressed: document.querySelector('.composer-toggle[data-kind="skills"]').getAttribute('aria-pressed'), sub: document.querySelector('.constellation-sub').textContent })`);
+  const slashOpen = await evaluate(`({ ...__orbit.constellation(), shown: [...document.querySelectorAll('.skill-node[data-shown="true"]')].map((n) => n.dataset.skill), pressed: document.querySelector('.drawer .composer-toggle[data-kind="skills"]').getAttribute('aria-pressed'), sub: document.querySelector('.constellation-sub').textContent })`);
   await screenshot('6g-slash.png');
   const fieldAt = await centreOf('.constellation-field');
   let slashZoom = null;
@@ -1041,11 +1041,97 @@ try {
   }
   await key('Enter', 'Enter', 13);
   await sleep(500);
-  const slashPicked = await evaluate(`({ chips: [...document.querySelectorAll('.skill-chip')].map((chip) => chip.dataset.skill), input: document.querySelector('.composer-input').value, constellationClosed: !__orbit.constellation().mode, drawerOpen: document.querySelector('.drawer').dataset.open === 'true' })`);
+  const slashPicked = await evaluate(`({ chips: [...document.querySelectorAll('.drawer .skill-chip')].map((chip) => chip.dataset.skill), input: document.querySelector('.drawer .composer-input').value, constellationClosed: !__orbit.constellation().mode, drawerOpen: document.querySelector('.drawer').dataset.open === 'true' })`);
   report.checks.slash = { open: slashOpen, zoom: slashZoom, picked: slashPicked };
-  await evaluate(`document.querySelector('.skill-chip-remove')?.click()`);
+  await evaluate(`document.querySelector('.drawer .skill-chip-remove')?.click()`);
   await key('Escape', 'Escape', 27);
   await sleep(500);
+
+  // The session view's composer: while a turn runs, a reply is written, a model picked and files and a skill attached to it,
+  // with Stop in place of Send and Enter stopping nothing; the skills panel opens over the view, and Esc closes it before the
+  // view. Once the turn ends, Enter sends it all to that conversation.
+  await waitFor(evaluate, `__host.state().phase === 'idle'`, 10_000);
+  const viewPrompt = 'Walk through the reply composer';
+  const viewReply = 'Now check the attached files';
+  await sendFromDrawer(viewPrompt);
+  await sleep(1300);
+  const viewKey = await evaluate('__host.sessions().current');
+  const viewBubble = await evaluate(`(() => {
+    const b = [...document.querySelectorAll('.claude-bubble')].find((el) => el.querySelector('.claude-bubble-title').textContent === ${JSON.stringify(viewPrompt)});
+    if (!b) return null;
+    const r = b.querySelector('.claude-bubble-button').getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+  let viewComposer = null;
+  if (viewBubble) {
+    const composerState = `(() => {
+      const view = document.querySelector('.session-view'); const c = view.querySelector('.sv-footer'); const input = c.querySelector('.composer-input');
+      return { open: !view.hidden, phase: __host.sessions().states.find((s) => s.key === ${JSON.stringify(viewKey)})?.phase, inputEnabled: !input.disabled, focused: document.activeElement === input,
+        modelEnabled: !c.querySelector('.composer-select').disabled, action: c.querySelector('.composer-action').textContent, input: input.value,
+        skills: [...c.querySelectorAll('.skill-chip')].map((chip) => chip.dataset.skill), files: [...c.querySelectorAll('.file-chip')].map((chip) => chip.dataset.path) };
+    })()`;
+    await click(viewBubble.x, viewBubble.y);
+    await sleep(700);
+    const working = await evaluate(composerState);
+    await cdp.send('Input.insertText', { text: viewReply });
+    await key('Enter', 'Enter', 13);
+    await sleep(250);
+    const afterEnter = await evaluate(composerState);
+    await evaluate(`(() => { const s = document.querySelector('.session-view .composer-select'); s.value = 'sonnet'; s.dispatchEvent(new Event('change')); })()`);
+    await sleep(250);
+    const modelPicked = await evaluate('__host.state().options.model');
+    at = await centreOf('.session-view .composer-toggle[data-kind="files"]');
+    if (at) await click(at.x, at.y);
+    await sleep(700);
+    const filesAttached = await evaluate(composerState);
+    at = await centreOf('.session-view .composer-toggle[data-kind="skills"]');
+    if (at) await click(at.x, at.y);
+    await sleep(1600);
+    const skillsPanel = await evaluate(
+      `({ mode: __orbit.constellation().mode, overView: ((c) => !!c && !c.hidden && c.parentElement?.classList.contains('sv-overlay') === true)(document.querySelector('.constellation')), pressed: document.querySelector('.session-view .composer-toggle[data-kind="skills"]').getAttribute('aria-pressed'), shown: document.querySelectorAll('.skill-node[data-shown="true"]').length })`,
+    );
+    const node = await evaluate(`(() => { const n = document.querySelector('.skill-node[data-shown="true"]'); if (!n) return null; const r = n.getBoundingClientRect(); return { skill: n.dataset.skill, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    if (node) {
+      await mouse('mouseMoved', node.x, node.y);
+      await sleep(200);
+      await click(node.x, node.y);
+      await sleep(400);
+    }
+    await screenshot('4h-view-composer.png');
+    const skillAttached = await evaluate(composerState);
+    await key('Escape', 'Escape', 27);
+    await sleep(500);
+    const escape = await evaluate(`({ constellationClosed: !__orbit.constellation().mode, viewOpen: !document.querySelector('.session-view').hidden })`);
+    const turnEnded = await waitFor(evaluate, `__host.sessions().states.find((s) => s.key === ${JSON.stringify(viewKey)})?.phase === 'idle'`, 12_000);
+    await sleep(400);
+    const idle = await evaluate(composerState);
+    await evaluate(`document.querySelector('.session-view .composer-input').focus()`);
+    await key('Enter', 'Enter', 13);
+    await sleep(900);
+    const sent = await evaluate('__host.skillPrompts.at(-1)');
+    const afterSend = await evaluate(composerState);
+    const transcript = await evaluate(`(() => { const p = [...document.querySelectorAll('.session-view .transcript .t-prompt')].at(-1); return { text: p?.textContent, skills: p?.querySelectorAll('.t-skill').length ?? 0, files: p?.querySelectorAll('.t-attached').length ?? 0 }; })()`);
+    await screenshot('4i-view-composer-sent.png');
+    viewComposer = { working, afterEnter, modelPicked, filesAttached, skillsPanel, skill: node?.skill, skillAttached, escape, turnEnded, idle, sent, afterSend, transcript };
+    viewComposer.ok =
+      working.open && working.phase === 'working' && working.inputEnabled && working.focused && working.modelEnabled && working.action === 'Stop' &&
+      afterEnter.phase === 'working' && afterEnter.input === viewReply &&
+      modelPicked === 'sonnet' &&
+      filesAttached.phase === 'working' && filesAttached.files.length === 2 &&
+      skillsPanel.mode === 'skills' && skillsPanel.overView && skillsPanel.pressed === 'true' &&
+      node !== null && skillAttached.skills.includes(node.skill) &&
+      escape.constellationClosed && escape.viewOpen &&
+      turnEnded && idle.action === 'Send' && idle.input === viewReply &&
+      sent?.text === viewReply && sent.key === viewKey && sent.skills.includes(node.skill) && sent.files.length === 2 &&
+      afterSend.input === '' && afterSend.skills.length === 0 && afterSend.files.length === 0 &&
+      transcript.skills === 1 && transcript.files === 2;
+    await evaluate(`(() => { const s = document.querySelector('.session-view .composer-select'); s.value = ''; s.dispatchEvent(new Event('change')); })()`);
+    await key('Escape', 'Escape', 27);
+    await sleep(500);
+    await waitFor(evaluate, `__host.sessions().states.every((s) => s.phase === 'idle')`, 12_000);
+    await sleep(300);
+  }
+  report.checks.viewComposer = viewComposer;
 
   // History: the History toggle opens a gyroscope per earlier conversation; clicking one opens the history panel out of it,
   // and Continue asks the host to resume it and opens the drawer for the next prompt.

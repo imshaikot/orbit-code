@@ -39,7 +39,7 @@ let graph = config.graph;
 const received: string[] = [];
 const prompts: string[] = [];
 /** Every prompt with the skills and files attached to it. */
-const skillPrompts: Array<{ text: string; skills: string[]; files: string[] }> = [];
+const skillPrompts: Array<{ text: string; skills: string[]; files: string[]; key?: string }> = [];
 /** Conversations the webview asked to continue. */
 const resumed: string[] = [];
 const logs: string[] = [];
@@ -551,7 +551,7 @@ function receive(message: WebviewToHost): void {
       break;
     case 'prompt':
       prompts.push(message.text);
-      skillPrompts.push({ text: message.text, skills: message.skills ?? [], files: message.files ?? [] });
+      skillPrompts.push({ text: message.text, skills: message.skills ?? [], files: message.files ?? [], key: message.key });
       playTurn(message.text, message.skills, message.files, message.key);
       break;
     case 'refreshCatalog':
