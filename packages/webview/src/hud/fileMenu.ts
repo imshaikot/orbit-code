@@ -48,6 +48,8 @@ export class FileMenu {
   private readonly body = el('div', 'fm-views');
   private readonly items = el('div', 'fm-actions');
   private readonly diff = this.item('diff', 'View diff', 'vs HEAD');
+  /** Only in a host with editor tabs of its own (`HostCapabilities.tabs`). */
+  private readonly tab = this.item('tab', 'Open in a tab', 'beside');
   private readonly confirmView = el('form', 'fm-confirm');
   private readonly confirmPrompt = el('p', 'fm-prompt');
   private readonly confirmError = el('p', 'fm-error');
@@ -80,11 +82,11 @@ export class FileMenu {
     head.append(this.swatch, title);
 
     this.items.setAttribute('role', 'menu');
-    this.items.append(this.diff, this.item('open', 'Open', 'here'), this.item('tab', 'Open in a tab', 'beside'), this.item('attach', 'Attach to prompt', 'for Claude'), el('div', 'fm-rule'), this.item('rename', 'Rename…'), this.item('delete', 'Delete…'));
+    this.items.append(this.diff, this.item('open', 'Open', 'here'), this.tab, this.item('attach', 'Attach to prompt', 'for Claude'), el('div', 'fm-rule'), this.item('rename', 'Rename…'), this.item('delete', 'Delete…'));
 
     const alarm = el('span', 'fm-alarm');
     alarm.setAttribute('aria-hidden', 'true');
-    const confirmDetail = el('p', 'fm-detail', 'VS Code deletes it the way the Explorer does, so Undo there brings it back.');
+    const confirmDetail = el('p', 'fm-detail', 'It is deleted the way the editor deletes any file, so it can be brought back.');
     const confirmButtons = el('div', 'fm-buttons');
     const cancelDelete = button('Cancel', 'button');
     this.confirmButton.type = 'submit';
@@ -200,6 +202,11 @@ export class FileMenu {
     if (path !== this.target?.path || git !== 'changed' || !this.diff.hidden) return;
     this.morph(() => (this.diff.hidden = false));
     if (!reducedMotion()) this.diff.animate([{ opacity: 0, transform: 'translateX(-8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE });
+  }
+
+  /** Whether the host has editor tabs to open the file in. */
+  setTabs(tabs: boolean): void {
+    this.tab.hidden = !tabs;
   }
 
   /** Keeps the card beside the file: (x, y) in client pixels, or off screen. */

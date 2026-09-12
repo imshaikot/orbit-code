@@ -520,6 +520,7 @@ function receive(message: WebviewToHost): void {
   switch (message.type) {
     case 'ready': {
       const { nodes, edges } = toColumnar(graph);
+      send({ type: 'host', capabilities: { tabs: true } });
       send({ type: 'visibility', visible: true });
       send({
         type: 'graph',
@@ -647,7 +648,8 @@ function receive(message: WebviewToHost): void {
 }
 
 Object.assign(window, {
-  acquireVsCodeApi: () => ({ postMessage: (message: WebviewToHost) => queueMicrotask(() => receive(message)) }),
+  // Through window.orbitHost, as any host but VS Code reaches the page (smoke covers acquireVsCodeApi).
+  orbitHost: { postMessage: (message: WebviewToHost) => queueMicrotask(() => receive(message)) },
   __host: {
     received,
     prompts,

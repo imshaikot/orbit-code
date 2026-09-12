@@ -152,6 +152,7 @@ export class OrbitController implements vscode.Disposable {
 
   /** Everything a freshly loaded (or reloaded) webview needs. */
   private sendSnapshot(): void {
+    this.post({ type: 'host', capabilities: { tabs: true } });
     const loaded = this.graphs.current;
     if (loaded) this.sendGraph(loaded, false);
     else if (this.lastStatus) this.post({ type: 'status', ...this.lastStatus });

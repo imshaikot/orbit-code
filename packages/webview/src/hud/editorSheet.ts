@@ -80,6 +80,8 @@ export class EditorSheet {
   private outside: Content | undefined;
   private height = 0;
   private motion: Animation | undefined;
+  /** The host has editor tabs of its own (`HostCapabilities.tabs`): offer to open the file in one. */
+  private tabs = true;
 
   constructor(
     host: HTMLElement,
@@ -155,6 +157,12 @@ export class EditorSheet {
     return this.isOpen ? this.path : undefined;
   }
 
+  /** Whether the host has editor tabs to open the file in. */
+  setTabs(tabs: boolean): void {
+    this.tabs = tabs;
+    this.tabButton.hidden = !tabs;
+  }
+
   /** Opens `path` on its code or on its changes; asks first if another file has unsaved edits here. */
   open(path: string, mode: EditorMode): void {
     if (this.isOpen && this.path === path && this.view) {
@@ -214,7 +222,7 @@ export class EditorSheet {
       if (this.follow !== id) return;
       this.loading.hidden = true;
       if (reply.kind === 'content') this.attach(reply);
-      else this.showNotice(reply.kind === 'failed' ? reply.error : `${basenameOf(path)} could not be opened.`, [['Open in a tab', () => this.events.openInTab(path, false)]]);
+      else this.showNotice(reply.kind === 'failed' ? reply.error : `${basenameOf(path)} could not be opened.`, this.tabs ? [['Open in a tab', () => this.events.openInTab(path, false)]] : [['Close', () => this.hide()]]);
     });
   }
 
@@ -454,6 +462,7 @@ export class EditorSheet {
     this.saveButton.disabled = !this.view || this.saving;
     this.saveButton.textContent = this.saving ? 'Saving…' : 'Save';
     this.tabButton.textContent = this.mode === 'changes' ? 'Diff in a tab' : 'Open in a tab';
+    this.tabButton.hidden = !this.tabs;
     this.language.textContent = this.languageLabel;
     this.saveState.textContent = this.saving ? 'Saving…' : this.dirty ? 'Unsaved' : '';
     const chunks = this.mode === 'changes' && this.view ? (getChunks(this.view.state)?.chunks.length ?? 0) : undefined;

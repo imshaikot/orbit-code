@@ -3,7 +3,7 @@
 
 import { nodeId } from '@orbit-code/graph/columnar';
 import { FILE_KINDS, FILE_KIND_LABELS } from '@orbit-code/graph/languages';
-import { PROTOCOL_VERSION } from '@orbit-code/protocol';
+import { type HostCapabilities, PROTOCOL_VERSION } from '@orbit-code/protocol';
 import * as THREE from 'three';
 import { FileRequests } from './fileRequests';
 import { type FrameSample, FrameLoop, type Pace } from './frameLoop';
@@ -47,6 +47,8 @@ const identity = new Identity(hud, {
 });
 hud.append(el('p', 'hint', 'Click a bubble to look inside a directory, or a file for what to do with it. Esc goes back up.'));
 const files = new FileRequests(host);
+/** Until the host says otherwise (`host`), it is one with editor tabs, as VS Code is. */
+let capabilities: HostCapabilities = { tabs: true };
 // Before the session panel: the card is on top, so its Esc listener has to come first.
 const fileMenu = new FileMenu(hud, {
   viewDiff: (path) => editor.open(path, 'changes'),
@@ -94,7 +96,8 @@ const session = new SessionPanel(
     newSession: () => host.post({ type: 'newSession' }),
     setOptions: (options) => host.post({ type: 'sessionOptions', options }),
     answerPermission: (key, id, answer, answers) => host.post({ type: 'permission', key, id, answer, ...(answers ? { answers } : {}) }),
-    openFile: (path) => host.post({ type: 'openFile', path }),
+    // A host without editor tabs shows the file in the editor sheet instead.
+    openFile: (path) => (capabilities.tabs ? host.post({ type: 'openFile', path }) : editor.open(path, 'code')),
     refreshCatalog: () => host.post({ type: 'refreshCatalog' }),
     reloadMcp: () => host.post({ type: 'reloadMcp' }),
     mcpAction: (server, action) => host.post({ type: 'mcpAction', server, action }),
@@ -231,6 +234,11 @@ host.on('catalog', ({ catalog }) => session.setCatalog(catalog));
 host.on('history', ({ history }) => session.setHistory(history));
 host.on('attachFiles', ({ files: picked }) => session.attachFiles(picked));
 host.on('visibility', ({ visible }) => loop.setPanelVisible(visible));
+host.on('host', ({ capabilities: next }) => {
+  capabilities = next;
+  fileMenu.setTabs(next.tabs);
+  editor.setTabs(next.tabs);
+});
 
 window.addEventListener('error', (event) => host.log('error', event.message));
 window.addEventListener('unhandledrejection', (event) => host.log('error', String(event.reason)));

@@ -1,7 +1,7 @@
 // Every message that crosses a process or thread boundary in Orbit.
 // Shared by the extension host, the indexer worker thread and the webview.
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 
 export interface GraphNode {
   /** Workspace-relative POSIX path. Stable key; session events resolve to it. */
@@ -63,7 +63,15 @@ export interface GraphFile {
   edges: GraphEdge[];
 }
 
+/** What the host can do besides what every host does; a webview that never hears assumes VS Code's. */
+export interface HostCapabilities {
+  /** The host shows a file, or its diff against HEAD, in an editor tab of its own (`file` request `show`, `openFile`). */
+  tabs: boolean;
+}
+
 export type HostToWebview =
+  /** Sent first in every snapshot. */
+  | { type: 'host'; capabilities: HostCapabilities }
   | { type: 'status'; phase: 'indexing' | 'error'; message: string; progress?: number }
   | { type: 'graph'; delta: GraphDelta }
   | { type: 'activity'; delta: ActivityDelta }
