@@ -39,6 +39,8 @@ export class Interaction {
   private pointer: { x: number; y: number; clientX: number; clientY: number } | undefined;
   private hoverRequested = false;
   private pressedAt: { x: number; y: number } | undefined;
+  /** The button is down and the pointer has moved: the camera is being dragged, and nothing is hovered until it is let go. */
+  private dragging = false;
   private last: LastPick | undefined;
   /** Picks run one after another; the picker takes one at a time. */
   private queue: Promise<unknown> = Promise.resolve();
@@ -54,7 +56,15 @@ export class Interaction {
 
     canvas.addEventListener('pointermove', (event) => {
       this.pointer = { x: event.offsetX, y: event.offsetY, clientX: event.clientX, clientY: event.clientY };
-      this.hoverRequested = true;
+      const pressed = this.pressedAt;
+      if (pressed && !this.dragging && Math.hypot(event.offsetX - pressed.x, event.offsetY - pressed.y) > CLICK_SLOP_PX) {
+        // A drag: the camera moves with the pointer, so nothing is under it to hover, and a pick per frame would be wasted.
+        this.dragging = true;
+        this.world()?.hover({ kind: 'none' });
+        view.hideTooltip();
+        canvas.style.cursor = 'grabbing';
+      }
+      this.hoverRequested = !this.dragging;
       view.wake();
     });
 
@@ -77,6 +87,13 @@ export class Interaction {
     canvas.addEventListener('pointerup', (event) => {
       const pressed = this.pressedAt;
       this.pressedAt = undefined;
+      if (this.dragging) {
+        this.dragging = false;
+        canvas.style.cursor = '';
+        // Let go: whatever is now under the pointer is hovered again.
+        this.hoverRequested = this.pointer !== undefined;
+        view.wake();
+      }
       if (event.button !== 0 || !pressed || Math.hypot(event.offsetX - pressed.x, event.offsetY - pressed.y) > CLICK_SLOP_PX) return;
       const fresh = this.fresh(event.offsetX, event.offsetY);
       if (fresh) this.clicked(fresh.world, fresh.picked);
@@ -181,7 +198,7 @@ export class Interaction {
         this.clicked(seen.world, picked);
         return;
       }
-      if (!this.pointer) return; // left the canvas meanwhile: the hover was already cleared
+      if (!this.pointer || this.dragging) return; // left the canvas, or started a drag, meanwhile: the hover was already cleared
       const tip = seen.world.hover(picked);
       if (tip && this.pointer) this.view.showTooltip(this.pointer.clientX, this.pointer.clientY, tip.title, tip.detail);
       else this.view.hideTooltip();
