@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: 22
+  VSCE: '@vscode/vsce@3.9.2'
+
+jobs:
+  release:
+    name: Build and publish the .vsix to a GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - run: yarn install --immutable
+      - name: Check the tag matches package.json
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+      - run: yarn typecheck
+      - run: node esbuild.mjs --production
+      - name: Package
+        run: yarn dlx --quiet "$VSCE" package --no-dependencies --allow-missing-repository --no-rewrite-relative-links --out "orbit-code-${GITHUB_REF_NAME#v}.vsix"
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" orbit-code-*.vsix --title "$GITHUB_REF_NAME" --generate-notes --verify-tag

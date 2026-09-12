@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # Keeps the action versions in .github/workflows current. npm dependencies are pinned exactly on purpose
+  # (dependency-cruiser upgrades need the shims in esbuild.mjs checked), so they are left out.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
