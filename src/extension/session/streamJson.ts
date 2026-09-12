@@ -15,9 +15,13 @@
 //   initialize   { commands: [{name, description, argumentHint}], models: [{value, displayName, description, supportsEffort,
 //                supportedEffortLevels, …}], agents, account, … }; a model without effort levels (Haiku) has neither field.
 //                "default" is the model the CLI picks by itself; skills are among the commands, plugin ones as plugin:name
-//   mcp_status   { mcpServers: [{name, status, scope, config, serverInfo, tools: [{name}]}] }; config can hold credentials
+//   mcp_status   { mcpServers: [{name, status, scope, config, serverInfo, tools: [{name, annotations}], error}] }; config can
+//                hold credentials (headers, env), and error is there only for a failed server
+//   mcp_toggle, mcp_reconnect, mcp_clear_auth   no body once done, else an error response with the reason ("Server not found: x")
+//   mcp_authenticate   { authUrl, requiresUserAction, callbackExpected, … }: for an OAuth server the process then waits for
+//                the page's callback; for a claude.ai connector (callbackExpected false) nothing calls back
 
-import { EFFORT_LEVELS, type EffortLevel, type McpServerInfo, type ModelChoice } from '../../shared/protocol';
+import { EFFORT_LEVELS, type EffortLevel, MAX_MCP_TOOL_NAMES, type McpServerInfo, type ModelChoice } from '../../shared/protocol';
 import { type PermissionUpdate, parsePermissionUpdates } from './permissions';
 
 /** How a permission decision is classed for the CLI's telemetry: a plain allow, an allow with "don't ask again", a deny. */
@@ -45,10 +49,19 @@ export type AgentEvent =
       message?: string;
     };
 
+/**
+ * Control requests Orbit sends. `mcp_toggle` saves the server as enabled or disabled in the CLI's own settings, as `/mcp`
+ * does; `mcp_authenticate` answers with the page to sign in on (`authUrl`) and keeps waiting for its callback.
+ */
+export type ControlRequest =
+  | { subtype: 'interrupt' | 'initialize' | 'mcp_status' }
+  | { subtype: 'mcp_reconnect' | 'mcp_authenticate' | 'mcp_clear_auth'; serverName: string }
+  | { subtype: 'mcp_toggle'; serverName: string; enabled: boolean };
+
 /** Messages Orbit writes to the CLI's stdin (`--input-format stream-json`). */
 export type AgentInput =
   | { type: 'user'; message: { role: 'user'; content: string } }
-  | { type: 'control_request'; request_id: string; request: { subtype: 'interrupt' | 'initialize' | 'mcp_status' } }
+  | { type: 'control_request'; request_id: string; request: ControlRequest }
   | {
       type: 'control_response';
       response: {
@@ -224,14 +237,51 @@ export function parseCommands(body: Json | undefined): CliCommand[] {
   );
 }
 
-/** `mcp_status` → name, status, scope and tool count. The rest, configurations with their credentials included, is dropped here. */
+/**
+ * `mcp_status` → name, status, scope, the tools' count and names, the kind of transport, the server's version and why it
+ * failed. The rest, configurations with their commands, URLs and credentials, is dropped here.
+ */
 export function parseMcpServers(body: Json | undefined): McpServerInfo[] {
-  return (Array.isArray(body?.mcpServers) ? body.mcpServers : []).flatMap((server) =>
-    isObject(server) && typeof server.name === 'string'
-      ? [{ name: server.name, status: string(server.status) ?? 'unknown', scope: string(server.scope), tools: Array.isArray(server.tools) ? server.tools.length : 0 }]
-      : [],
-  );
+  return (Array.isArray(body?.mcpServers) ? body.mcpServers : []).flatMap((server) => {
+    if (!isObject(server) || typeof server.name !== 'string') return [];
+    const tools = Array.isArray(server.tools) ? server.tools : [];
+    const toolNames = tools.flatMap((tool) => (isObject(tool) && typeof tool.name === 'string' ? [tool.name] : [])).slice(0, MAX_MCP_TOOL_NAMES);
+    const transport = isObject(server.config) ? string(server.config.type) : undefined;
+    const version = isObject(server.serverInfo) ? string(server.serverInfo.version) : undefined;
+    const error = string(server.error);
+    return [
+      {
+        name: server.name,
+        status: string(server.status) ?? 'unknown',
+        scope: string(server.scope),
+        tools: tools.length,
+        ...(transport ? { transport } : {}),
+        ...(version ? { version } : {}),
+        ...(toolNames.length > 0 ? { toolNames } : {}),
+        ...(error ? { error: scrubError(error) } : {}),
+      },
+    ];
+  });
 }
+
+/** `mcp_authenticate` → the page the user signs in on, when the agent needs them to; only an http(s) URL. */
+export function parseAuthUrl(body: Json | undefined): string | undefined {
+  const url = string(body?.authUrl);
+  return url && /^https?:\/\//i.test(url) ? url : undefined;
+}
+
+/** A server's error as the agent words it can quote a header or a URL: anything shaped like a credential goes, and it is clipped. */
+export function scrubError(text: string): string {
+  const clean = text
+    .replace(/\b(bearer|basic|token)\s+[\w.~+/=-]{6,}/gi, '$1 …')
+    .replace(/([?&][\w-]*(?:token|key|secret|password|auth|code|sig)[\w-]*=)[^&\s"']+/gi, '$1…')
+    .replace(/\b(?:sk|ghp|gho|ghs|ghu|github_pat|glpat|xox[abpr])[-_][\w-]{8,}/g, '…')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return clean.length > MAX_ERROR_CHARS ? `${clean.slice(0, MAX_ERROR_CHARS - 1)}…` : clean;
+}
+
+const MAX_ERROR_CHARS = 400;
 
 function resultText(content: unknown): string {
   const text = typeof content === 'string' ? content : Array.isArray(content) ? content.map((part) => (isObject(part) && typeof part.text === 'string' ? part.text : '')).join(' ') : '';

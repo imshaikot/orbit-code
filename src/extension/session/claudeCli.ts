@@ -2,11 +2,11 @@ import { type ChildProcessWithoutNullStreams, execFile, spawn } from 'node:child
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { McpServerInfo, ModelChoice, PermissionAnswer } from '../../shared/protocol';
-import type { AgentAvailability, AgentCatalogResult, AgentExit, AgentProcess, AgentProcessSink, AgentStartOptions, SessionBackend } from './backend';
+import type { McpAction, McpServerInfo, ModelChoice, PermissionAnswer } from '../../shared/protocol';
+import type { AgentAvailability, AgentCatalogResult, AgentControl, AgentExit, AgentProcess, AgentProcessSink, AgentStartOptions, SessionBackend } from './backend';
 import type { PermissionUpdate } from './permissions';
 import { catalogSkills, findSkills } from './skillCatalog';
-import { type AgentInput, type CliCommand, parseCommands, parseControlAnswer, parseLine, parseMcpServers, parseModels } from './streamJson';
+import { type AgentInput, type CliCommand, type ControlRequest, parseAuthUrl, parseCommands, parseControlAnswer, parseLine, parseMcpServers, parseModels } from './streamJson';
 
 const STDERR_TAIL_BYTES = 4096;
 const PROBE_TIMEOUT_MS = 15_000;
@@ -75,75 +75,137 @@ export class ClaudeCliBackend implements SessionBackend {
     return { models: answers.models, skills: catalogSkills(disk, answers.commands, cwd), mcpServers: answers.mcpServers, error: answers.error };
   }
 
+  /** A process for the MCP view: its MCP servers load as a session's would, and it takes their control requests until disposed. */
+  control(cwd: string): AgentControl {
+    return new ClaudeCliControl(this.spawnControl(cwd));
+  }
+
   /**
-   * A short-lived process that gets no prompt, only the `initialize` and `mcp_status` control requests, and saves no
-   * session. It loads what a session would (settings, plugins, MCP servers), so the answers are the ones a session gets.
+   * A process that gets no prompt, only control requests, and saves no session. It loads what a session would (settings,
+   * plugins, MCP servers), so the answers are the ones a session gets.
    */
-  private askCli(cwd: string): Promise<{ models: ModelChoice[]; commands: CliCommand[] | undefined; mcpServers: McpServerInfo[]; error?: string }> {
+  private spawnControl(cwd: string): ChildProcessWithoutNullStreams {
     const executable = this.executable ?? (expandHome(this.settings().path) || 'claude');
     const args = [...BASE_ARGS, '--no-session-persistence', ...this.settings().extraArgs];
-    return new Promise((resolve) => {
-      const child = spawn(executable, args, { cwd, env: agentEnv(), stdio: 'pipe', shell: needsShell(executable), windowsHide: true });
-      const result: { models: ModelChoice[]; commands: CliCommand[] | undefined; mcpServers: McpServerInfo[]; error?: string } = { models: [], commands: undefined, mcpServers: [] };
-      let buffer = '';
-      let stderr = '';
-      let polls = 0;
-      let mcpSettled = false;
-      let settled = false;
-      let pollTimer: ReturnType<typeof setTimeout> | undefined;
-      const send = (input: AgentInput) => {
-        if (child.stdin.writable) child.stdin.write(`${JSON.stringify(input)}\n`);
-      };
-      const finish = (error?: string) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(deadline);
-        clearTimeout(pollTimer);
-        if (error) result.error = error;
-        child.stdin.end();
-        const kill = setTimeout(() => child.kill('SIGTERM'), KILL_GRACE_MS);
-        child.once('close', () => clearTimeout(kill));
-        resolve(result);
-      };
-      const deadline = setTimeout(() => finish('Claude Code did not say which models and skills it offers in time.'), CATALOG_TIMEOUT_MS);
-      const answer = (line: string) => {
-        const reply = parseControlAnswer(line);
-        if (!reply) return;
-        if (reply.requestId === 'orbit-catalog-initialize') {
-          if (reply.ok) {
-            result.models = parseModels(reply.body);
-            result.commands = parseCommands(reply.body);
-          } else {
-            result.error = reply.error ?? 'Claude Code refused the initialize request.';
-          }
-        } else if (reply.requestId.startsWith('orbit-catalog-mcp-')) {
-          result.mcpServers = reply.ok ? parseMcpServers(reply.body) : [];
-          if (result.mcpServers.some((server) => server.status === 'pending') && polls < MCP_POLLS) {
-            pollTimer = setTimeout(() => send({ type: 'control_request', request_id: `orbit-catalog-mcp-${++polls}`, request: { subtype: 'mcp_status' } }), MCP_POLL_MS);
-          } else {
-            mcpSettled = true;
-          }
-        }
-        if ((result.commands || result.error) && mcpSettled) finish();
-      };
-      child.stdin.on('error', () => {});
-      child.stdout.setEncoding('utf8');
-      child.stdout.on('data', (chunk: string) => {
-        buffer += chunk;
-        let newline: number;
-        while ((newline = buffer.indexOf('\n')) !== -1) {
-          const line = buffer.slice(0, newline).trim();
-          buffer = buffer.slice(newline + 1);
-          if (line) answer(line);
-        }
-      });
-      child.stderr.setEncoding('utf8');
-      child.stderr.on('data', (chunk: string) => (stderr = (stderr + chunk).slice(-STDERR_TAIL_BYTES)));
-      child.on('error', (error) => finish(error.message));
-      child.on('close', (code) => finish(result.commands ? undefined : lastLine(stderr) || `Claude Code exited with code ${code} before answering.`));
-      send({ type: 'control_request', request_id: 'orbit-catalog-initialize', request: { subtype: 'initialize' } });
-      send({ type: 'control_request', request_id: 'orbit-catalog-mcp-0', request: { subtype: 'mcp_status' } });
+    return spawn(executable, args, { cwd, env: agentEnv(), stdio: 'pipe', shell: needsShell(executable), windowsHide: true });
+  }
+
+  /** A short-lived control process gets `initialize` and `mcp_status`, and `mcp_status` again while a server is still connecting; then it ends. */
+  private async askCli(cwd: string): Promise<{ models: ModelChoice[]; commands: CliCommand[] | undefined; mcpServers: McpServerInfo[]; error?: string }> {
+    const control = new ClaudeCliControl(this.spawnControl(cwd));
+    const result: { models: ModelChoice[]; commands: CliCommand[] | undefined; mcpServers: McpServerInfo[]; error?: string } = { models: [], commands: undefined, mcpServers: [] };
+    const initialize = control.request({ subtype: 'initialize' }).then(
+      (body) => {
+        result.models = parseModels(body);
+        result.commands = parseCommands(body);
+      },
+      (error: Error) => {
+        result.error = error.message;
+      },
+    );
+    const statuses = (async () => {
+      for (let polls = 0; ; polls++) {
+        const body = await control.request({ subtype: 'mcp_status' }).catch(() => null);
+        if (body === null) return;
+        result.mcpServers = parseMcpServers(body);
+        if (polls >= MCP_POLLS || !result.mcpServers.some((server) => server.status === 'pending')) return;
+        await new Promise((resolve) => setTimeout(resolve, MCP_POLL_MS));
+      }
+    })();
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<void>((resolve) => {
+      deadline = setTimeout(() => {
+        result.error = 'Claude Code did not say which models and skills it offers in time.';
+        resolve();
+      }, CATALOG_TIMEOUT_MS);
     });
+    await Promise.race([Promise.all([initialize, statuses]), late]);
+    clearTimeout(deadline);
+    control.dispose();
+    // Requests refused by the disposal must not change what was already returned.
+    return { ...result };
+  }
+}
+
+/**
+ * A CLI process that only answers control requests: the catalog's, asked once, and the MCP view's, kept while that is
+ * used. Each request resolves with the body of its answer, or rejects with the CLI's reason or the process's end.
+ */
+class ClaudeCliControl implements AgentControl {
+  private buffer = '';
+  private stderr = '';
+  private requests = 0;
+  /** Why no more requests are taken: the process ended, or was let go. */
+  private ended: string | undefined;
+  private readonly waiting = new Map<string, { subtype: string; resolve(body: Record<string, unknown> | undefined): void; reject(error: Error): void }>();
+
+  constructor(private readonly child: ChildProcessWithoutNullStreams) {
+    child.stdin.on('error', () => {}); // EPIPE once the process is gone; `close` says why.
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => this.read(chunk));
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => (this.stderr = (this.stderr + chunk).slice(-STDERR_TAIL_BYTES)));
+    child.on('error', (error) => this.end(error.message));
+    child.on('close', (code) => this.end(lastLine(this.stderr) || `Claude Code exited with code ${code} before answering.`));
+  }
+
+  get alive(): boolean {
+    return this.ended === undefined;
+  }
+
+  request(request: ControlRequest): Promise<Record<string, unknown> | undefined> {
+    if (this.ended !== undefined || !this.child.stdin.writable) return Promise.reject(new Error(this.ended ?? 'Claude Code takes no more requests.'));
+    const id = `orbit-control-${++this.requests}`;
+    const input: AgentInput = { type: 'control_request', request_id: id, request };
+    return new Promise((resolve, reject) => {
+      this.waiting.set(id, { subtype: request.subtype, resolve, reject });
+      this.child.stdin.write(`${JSON.stringify(input)}\n`);
+    });
+  }
+
+  async mcpStatus(): Promise<McpServerInfo[]> {
+    return parseMcpServers(await this.request({ subtype: 'mcp_status' }));
+  }
+
+  async mcpAction(server: string, action: McpAction): Promise<{ authUrl?: string }> {
+    const request: ControlRequest =
+      action === 'enable' || action === 'disable'
+        ? { subtype: 'mcp_toggle', serverName: server, enabled: action === 'enable' }
+        : { subtype: action === 'reconnect' ? 'mcp_reconnect' : action === 'signIn' ? 'mcp_authenticate' : 'mcp_clear_auth', serverName: server };
+    const body = await this.request(request);
+    const authUrl = action === 'signIn' ? parseAuthUrl(body) : undefined;
+    return authUrl ? { authUrl } : {};
+  }
+
+  /** Closes stdin, and sends SIGTERM if the process has not gone by then. Requests still waiting are refused. */
+  dispose(): void {
+    if (this.ended !== undefined) return;
+    this.end('Claude Code was let go before answering.');
+    this.child.stdin.end();
+    const kill = setTimeout(() => this.child.kill('SIGTERM'), KILL_GRACE_MS);
+    this.child.once('close', () => clearTimeout(kill));
+  }
+
+  private read(chunk: string): void {
+    this.buffer += chunk;
+    let newline: number;
+    while ((newline = this.buffer.indexOf('\n')) !== -1) {
+      const line = this.buffer.slice(0, newline).trim();
+      this.buffer = this.buffer.slice(newline + 1);
+      const reply = line ? parseControlAnswer(line) : undefined;
+      const waiter = reply && this.waiting.get(reply.requestId);
+      if (!reply || !waiter) continue;
+      this.waiting.delete(reply.requestId);
+      if (reply.ok) waiter.resolve(reply.body);
+      else waiter.reject(new Error(reply.error ?? `Claude Code refused the ${waiter.subtype} request.`));
+    }
+  }
+
+  private end(reason: string): void {
+    if (this.ended !== undefined) return;
+    this.ended = reason;
+    for (const waiter of this.waiting.values()) waiter.reject(new Error(reason));
+    this.waiting.clear();
   }
 }
 

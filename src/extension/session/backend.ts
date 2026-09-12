@@ -1,4 +1,4 @@
-import type { EffortLevel, McpServerInfo, ModelChoice, PermissionAnswer, PermissionMode, SkillInfo } from '../../shared/protocol';
+import type { EffortLevel, McpAction, McpServerInfo, ModelChoice, PermissionAnswer, PermissionMode, SkillInfo } from '../../shared/protocol';
 import type { PermissionUpdate } from './permissions';
 import type { AgentEvent } from './streamJson';
 
@@ -57,6 +57,20 @@ export interface AgentProcess {
 }
 
 /**
+ * A process kept for the MCP view. It loads the user's MCP servers as a session would, gets no prompt, saves no session,
+ * and changes what `/mcp` changes in a terminal: an enabled or disabled server is saved in the agent's own settings.
+ */
+export interface AgentControl {
+  /** False once the process has ended. */
+  readonly alive: boolean;
+  /** Every MCP server and how it connected. */
+  mcpStatus(): Promise<McpServerInfo[]>;
+  /** Resolves once the agent has done it, with the page to sign in on when `signIn` needs the user; rejects with the agent's reason. */
+  mcpAction(server: string, action: McpAction): Promise<{ authUrl?: string }>;
+  dispose(): void;
+}
+
+/**
  * A way to run an agent session. The Claude Code CLI is the implementation today;
  * an Agent SDK or remote backend only has to produce the same AgentEvents.
  */
@@ -64,5 +78,7 @@ export interface SessionBackend {
   probe(): Promise<AgentAvailability>;
   /** Models, skills and MCP servers the agent offers in `cwd`, found without starting a conversation. Only after a successful probe. */
   catalog?(cwd: string): Promise<AgentCatalogResult>;
+  /** A process for the MCP view in `cwd`. Only after a successful probe. */
+  control?(cwd: string): AgentControl;
   start(options: AgentStartOptions, sink: AgentProcessSink): AgentProcess;
 }

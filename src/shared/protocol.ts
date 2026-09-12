@@ -264,6 +264,8 @@ export interface AgentCatalog {
   models: ModelChoice[];
   skills: SkillInfo[];
   mcpServers: McpServerInfo[];
+  /** The MCP view's process; absent from a host that has none. */
+  mcp?: McpState;
 }
 
 export interface ModelChoice {
@@ -298,6 +300,31 @@ export interface McpServerInfo {
   /** user, project, local, claudeai, dynamic, … */
   scope?: string;
   tools: number;
+  /** stdio, http, sse, claudeai-proxy, …: the kind of connection only, never its command, URL or headers. */
+  transport?: string;
+  /** What the server says its version is. */
+  version?: string;
+  /** Tool names, the first MAX_MCP_TOOL_NAMES of them. */
+  toolNames?: string[];
+  /** Why it failed to connect, clipped, with anything shaped like a credential taken out. */
+  error?: string;
+  /** An action of the MCP view under way for it. */
+  pending?: McpAction;
+  /** How the last action went, in a sentence. */
+  note?: string;
+}
+
+/** What the MCP view can do to a server, through the agent's own control requests (the settings `/mcp` changes). */
+export const MCP_ACTIONS = ['reconnect', 'enable', 'disable', 'signIn', 'signOut'] as const;
+export type McpAction = (typeof MCP_ACTIONS)[number];
+export const MAX_MCP_TOOL_NAMES = 60;
+
+/** The MCP view's own agent process: asking every server again (Reload) and when it last answered. */
+export interface McpState {
+  loading: boolean;
+  /** Epoch ms of the last answer about the servers, from the catalog or the MCP view. */
+  checkedAt?: number;
+  error?: string;
 }
 
 /** Earlier conversations of this workspace, as the agent keeps them on disk. */
