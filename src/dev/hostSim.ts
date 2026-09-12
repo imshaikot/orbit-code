@@ -37,8 +37,8 @@ const config = JSON.parse(document.getElementById('harness-config')!.textContent
 let graph = config.graph;
 const received: string[] = [];
 const prompts: string[] = [];
-/** Every prompt with the skills attached to it. */
-const skillPrompts: Array<{ text: string; skills: string[] }> = [];
+/** Every prompt with the skills and files attached to it. */
+const skillPrompts: Array<{ text: string; skills: string[]; files: string[] }> = [];
 /** Conversations the webview asked to continue. */
 const resumed: string[] = [];
 const logs: string[] = [];
@@ -212,14 +212,14 @@ function reply(prompt: string): string {
  * A turn, the way the host takes a prompt: in the conversation `key`, else in the current one when idle, else in a new
  * conversation beside it. Returns the key of the conversation that took it, or undefined when `key` names a busy one.
  */
-function playTurn(prompt: string, skills: string[] = [], key?: string): string | undefined {
+function playTurn(prompt: string, skills: string[] = [], files: string[] = [], key?: string): string | undefined {
   const conversation = key !== undefined ? find(key) : busy(currentConversation()) ? open() : currentConversation();
   if (!conversation || busy(conversation)) return undefined;
   makeCurrent(conversation);
   const { state } = conversation;
   state.phase = 'working';
   sendState(conversation);
-  entry(conversation, { kind: 'prompt', text: prompt, ...(skills.length > 0 ? { skills } : {}) });
+  entry(conversation, { kind: 'prompt', text: prompt, ...(skills.length > 0 ? { skills } : {}), ...(files.length > 0 ? { files } : {}) });
   // The reads and edits spread over the graph differently per conversation, so two turns at once touch different files.
   const spread = chats.indexOf(conversation) * 7;
   const steps: Array<() => void> = [
@@ -476,8 +476,8 @@ function receive(message: WebviewToHost): void {
       break;
     case 'prompt':
       prompts.push(message.text);
-      skillPrompts.push({ text: message.text, skills: message.skills ?? [] });
-      playTurn(message.text, message.skills, message.key);
+      skillPrompts.push({ text: message.text, skills: message.skills ?? [], files: message.files ?? [] });
+      playTurn(message.text, message.skills, message.files, message.key);
       break;
     case 'refreshCatalog':
       send({ type: 'catalog', catalog });
@@ -485,6 +485,10 @@ function receive(message: WebviewToHost): void {
     case 'loadHistory':
       send({ type: 'history', history: { loading: true, conversations: [] } });
       setTimeout(() => send({ type: 'history', history: { loading: false, conversations: conversations() } }), 150);
+      break;
+    case 'pickFiles':
+      // As if two files were picked in the open dialog: one of the graph, and one outside the workspace with a space in its name.
+      setTimeout(() => send({ type: 'attachFiles', files: [graph.nodes[Math.min(2, graph.nodes.length - 1)].id, '/tmp/harness notes.md'] }), 150);
       break;
     case 'resumeConversation': {
       // As the host: a conversation already holding it becomes current; else a fresh one takes it, opened if need be.
@@ -548,7 +552,7 @@ Object.assign(window, {
     /** Ends every scripted turn now, so nothing is left animating once it settles. */
     pause,
     /** A turn in the conversation `key`, else in the current one, else in a new one beside a busy current; returns the key. */
-    play: (prompt = 'Harness turn', key?: string) => playTurn(prompt, [], key),
+    play: (prompt = 'Harness turn', key?: string) => playTurn(prompt, [], [], key),
     /** Claude thinks, in or out of a turn: every import line on screen fires. */
     think,
     /** Claude asks to use a tool; the session view's card answers it. */

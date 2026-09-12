@@ -357,6 +357,16 @@ try {
       escapeKeptCamera: afterCardEscape.focus === clean.focus,
     };
 
+    // Attach to prompt: the card closes and the drawer opens with the file as a chip; the chip and the drawer are put away again.
+    await clickOn('.file-menu .fm-item-attach');
+    await sleep(600);
+    const attached = await evaluate(`({ menuOpen: __orbit.fileMenu().open, drawerOpen: document.querySelector('.drawer').dataset.open === 'true', chips: [...document.querySelectorAll('.file-chip')].map((chip) => chip.dataset.path) })`);
+    report.checks.fileMenu.attach = { ...attached, ok: !attached.menuOpen && attached.drawerOpen && attached.chips.length === 1 && attached.chips[0] === changed.path };
+    await evaluate(`document.querySelector('.file-chip-remove')?.click()`);
+    await key('Escape', 'Escape', 27);
+    await sleep(500);
+    await openCard(first);
+
     const writesBefore = (await evaluate('__host.files.writes')).length;
     await clickOn('.file-menu .fm-item-open');
     await waitFor(evaluate, '__orbit.editor().open && __orbit.editor().text !== undefined', 5_000);
@@ -874,6 +884,35 @@ try {
     await sleep(400);
   }
   report.checks.skills = { models, open: skillsOpen, drag: skillDrag };
+
+  // Files: the composer's Files button asks the host's open dialog (hostSim answers with a graph file and a path outside the
+  // workspace); both become chips that go out with the prompt, and the transcript names them, linking only the workspace one.
+  at = await tabAt();
+  await click(at.x, at.y);
+  await sleep(600);
+  const filesButton = await centreOf('.composer-toggle[data-kind="files"]');
+  let attachments = null;
+  if (filesButton) {
+    await click(filesButton.x, filesButton.y);
+    await sleep(700);
+    const chips = await evaluate(`[...document.querySelectorAll('.file-chip')].map((chip) => chip.dataset.path)`);
+    await screenshot('6k-files-attached.png');
+    await cdp.send('Input.insertText', { text: 'Read the attached files' });
+    await key('Enter', 'Enter', 13);
+    await sleep(900);
+    attachments = {
+      pickAsked: (await evaluate('__host.received')).includes('pickFiles'),
+      chips,
+      sent: await evaluate('__host.skillPrompts.at(-1)'),
+      chipsClearedOnSend: await evaluate(`document.querySelectorAll('.file-chip').length === 0`),
+      inTranscript: await evaluate(`[...document.querySelectorAll('.transcript .t-prompt')].at(-1)?.querySelectorAll('.t-attached').length ?? 0`),
+      linked: await evaluate(`[...document.querySelectorAll('.transcript .t-prompt')].at(-1)?.querySelectorAll('.t-attached[data-file]').length ?? 0`),
+    };
+    attachments.ok = chips.length === 2 && attachments.sent?.files?.length === 2 && attachments.chipsClearedOnSend && attachments.inTranscript === 2 && attachments.linked === 1;
+    await waitFor(evaluate, `__host.state().phase === 'idle'`, 12_000);
+    await sleep(400);
+  }
+  report.checks.files = attachments;
 
   // A slash typed in the composer opens the Skills constellation narrowed to the text after it; the wheel over the field
   // zooms it in; Enter attaches the picked skill in place of the typed command and the panel goes.
