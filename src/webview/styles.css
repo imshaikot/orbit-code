@@ -306,9 +306,9 @@ select:focus-visible {
   position: absolute;
   left: 50%;
   bottom: -10px;
-  width: 78px;
+  width: 108px;
   height: 46px;
-  margin-left: -39px;
+  margin-left: -54px;
   padding: 15px 0 0;
   display: flex;
   justify-content: center;
