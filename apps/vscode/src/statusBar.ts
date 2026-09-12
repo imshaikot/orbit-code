@@ -1,3 +1,4 @@
+import { summarizeSessions } from '@orbit-code/agent/sessionSummary';
 import type { SessionService } from '@orbit-code/agent/sessionService';
 import type { SessionsSnapshot } from '@orbit-code/protocol';
 import * as vscode from 'vscode';
@@ -19,23 +20,13 @@ export class SessionStatusBar implements vscode.Disposable {
   }
 
   private update({ states }: SessionsSnapshot): void {
-    const running = states.filter((state) => state.phase === 'working' || state.phase === 'stopping');
-    if (running.length === 0) {
+    const summary = summarizeSessions(states);
+    if (!summary) {
       this.item.hide();
       return;
     }
-    const waiting = running.filter((state) => state.permission);
-    if (waiting.length > 0) {
-      const [first] = waiting;
-      this.item.text = waiting.length === 1 ? '$(warning) Claude needs approval' : `$(warning) ${waiting.length} Claude sessions need approval`;
-      this.item.tooltip = `Claude wants to use ${first.permission?.tool}. Open Orbit Code to decide.`;
-    } else if (running.length === 1) {
-      this.item.text = running[0].phase === 'stopping' ? '$(loading~spin) Claude stopping' : '$(loading~spin) Claude working';
-      this.item.tooltip = 'Open Orbit Code';
-    } else {
-      this.item.text = `$(loading~spin) ${running.length} Claude sessions working`;
-      this.item.tooltip = 'Open Orbit Code';
-    }
+    this.item.text = `${summary.waiting > 0 ? '$(warning)' : '$(loading~spin)'} ${summary.text}`;
+    this.item.tooltip = summary.tooltip;
     this.item.show();
   }
 }
