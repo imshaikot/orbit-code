@@ -161,6 +161,83 @@ try {
     drawCalls: samples.at(-1).calls,
     triangles: samples.at(-1).triangles,
   };
+  // Camera motion, while the turn still animates at the ambient pace: a drag orbits at the smooth pace, with no hover
+  // pick and no tooltip while the button is down; a wheel burst zooms eased over frames at the smooth pace too, and
+  // brings the view back where it was when reversed. Frames are counted against the wall clock over each gesture.
+  {
+    const cx = Math.round(width / 2);
+    const cy = Math.round(height / 2);
+    const framesOver = async (act) => {
+      const f0 = await evaluate('__orbit.debug.frames');
+      const t0 = Date.now();
+      const cpu = [];
+      await act(cpu);
+      const ms = Date.now() - t0;
+      const frames = (await evaluate('__orbit.debug.frames')) - f0;
+      return { frames, ms, fps: +((frames * 1000) / ms).toFixed(1), cpuMs: cpu.length > 0 ? +(cpu.reduce((a, b) => a + b, 0) / cpu.length).toFixed(2) : null };
+    };
+    const cameraState = () => evaluate(`__orbit.camera()`);
+    const apart = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const dragFrom = { x: cx - 150, y: cy + 40 };
+    const steps = 20;
+    const dragTo = { x: dragFrom.x + steps * 12, y: dragFrom.y };
+    const dragAcross = async (from, to, cpu) => {
+      await mouse('mousePressed', from.x, from.y);
+      for (let k = 1; k <= steps; k++) {
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + ((to.x - from.x) * k) / steps, y: from.y + ((to.y - from.y) * k) / steps, button: 'left', buttons: 1 });
+        await sleep(16);
+        if (k % 5 === 0) cpu.push(await evaluate('__orbit.debug.cpuMs'));
+      }
+      await mouse('mouseReleased', to.x, to.y);
+    };
+    await mouse('mouseMoved', dragFrom.x, dragFrom.y);
+    await sleep(400);
+    const before = await cameraState();
+    let tooltipDuringDrag = false;
+    let cursorDuringDrag = null;
+    const drag = await framesOver(async (cpu) => {
+      await dragAcross(dragFrom, dragTo, cpu);
+    });
+    // Sampled at the end of the drag, before the button came up: the hover pick is skipped and the tooltip stays hidden.
+    await mouse('mousePressed', dragTo.x, dragTo.y);
+    for (let k = 1; k <= 6; k++) {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: dragTo.x - k * 12, y: dragTo.y, button: 'left', buttons: 1 });
+      await sleep(16);
+    }
+    await sleep(250);
+    tooltipDuringDrag = (await tooltipTitle()) !== null;
+    cursorDuringDrag = await evaluate(`document.querySelector('canvas.stage').style.cursor`);
+    await mouse('mouseReleased', dragTo.x - 72, dragTo.y);
+    const after = await cameraState();
+    // Back the same way, so the view is where it was for the checks that follow.
+    await dragAcross({ x: dragTo.x - 72, y: dragTo.y }, { x: dragFrom.x, y: dragFrom.y }, []);
+    await sleep(600);
+    // The wheel: six notches in, then six out. Zoom is eased, so the frames come at the smooth pace until it settles.
+    await mouse('mouseMoved', cx, cy);
+    await sleep(200);
+    const wheelAt = (deltaY) => cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: cx, y: cy, deltaX: 0, deltaY });
+    const zoomIn = await framesOver(async (cpu) => {
+      for (let k = 0; k < 6; k++) {
+        await wheelAt(-100);
+        await sleep(30);
+        cpu.push(await evaluate('__orbit.debug.cpuMs'));
+      }
+      await sleep(350);
+    });
+    const zoomedIn = await cameraState();
+    for (let k = 0; k < 6; k++) {
+      await wheelAt(100);
+      await sleep(30);
+    }
+    await sleep(600);
+    const zoomedBack = await cameraState();
+    // A drag orbits the target: the camera moves, the target stays. The wheel changes the distance to the target, and the
+    // same notches back restore it (the pull toward a bubble under the pointer only moves sideways).
+    report.checks.motion = {
+      drag: { ...drag, cameraMoved: apart(after.position, before.position) > 0.02 * before.distance, targetKept: apart(after.target, before.target) < 0.02 * before.distance, tooltipDuringDrag, cursorDuringDrag },
+      zoom: { ...zoomIn, zoomedIn: zoomedIn.distance < 0.8 * before.distance, distanceRestored: Math.abs(zoomedBack.distance - before.distance) < 0.05 * before.distance },
+    };
+  }
   await waitFor(evaluate, `__host.state().phase === 'idle'`, 10_000);
   report.checks.transcript = await evaluate(`({
     entries: document.querySelectorAll('.transcript .t-entry').length,
