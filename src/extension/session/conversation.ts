@@ -189,6 +189,11 @@ export class Conversation {
     this.stopAgent();
   }
 
+  /** The agent's MCP servers were enabled, disabled or signed in to: the next prompt starts a process that loads them, resuming the conversation. */
+  reloadAgent(): void {
+    if (this.agent) this.agentOptions = undefined;
+  }
+
   /** What blocks a session (folder, workspace trust, the agent) changed. */
   availabilityChanged(): void {
     this.updateAvailability();

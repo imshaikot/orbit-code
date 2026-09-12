@@ -1,7 +1,19 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import * as vscode from 'vscode';
 import { toColumnar } from '../shared/columnar';
-import { type ConversationSummary, type FileReply, type HostToWebview, PERMISSION_ANSWERS, PROTOCOL_VERSION, type SessionOptions, type SessionState, type SessionsSnapshot, type WebviewToHost } from '../shared/protocol';
+import {
+  type ConversationSummary,
+  type FileReply,
+  type HostToWebview,
+  MCP_ACTIONS,
+  type McpAction,
+  PERMISSION_ANSWERS,
+  PROTOCOL_VERSION,
+  type SessionOptions,
+  type SessionState,
+  type SessionsSnapshot,
+  type WebviewToHost,
+} from '../shared/protocol';
 import { isWorkspaceId } from '../shared/workspacePath';
 import { isEffort, isModelName, isPermissionMode } from './config';
 import { FileActions } from './fileActions';
@@ -235,6 +247,12 @@ export class OrbitController implements vscode.Disposable {
       case 'refreshCatalog':
         void this.session.refreshCatalog();
         break;
+      case 'reloadMcp':
+        void this.session.reloadMcp();
+        break;
+      case 'mcpAction':
+        void this.mcpAction(message.server, message.action);
+        break;
       case 'loadHistory':
         void this.loadHistory();
         break;
@@ -312,6 +330,16 @@ export class OrbitController implements vscode.Disposable {
       this.log.warn(`history unavailable: ${text}`);
       this.post({ type: 'history', history: { loading: false, conversations: this.conversations, error: text } });
     }
+  }
+
+  /** Only an action the MCP view offers, on a server the catalog lists; a sign-in page the agent hands back opens in the browser. */
+  private async mcpAction(server: unknown, action: unknown): Promise<void> {
+    if (typeof server !== 'string' || !MCP_ACTIONS.includes(action as McpAction)) return;
+    if (!this.session.catalog.mcpServers.some((known) => known.name === server)) return;
+    const authUrl = await this.session.mcpAction(server, action as McpAction);
+    // Handed over as the string itself: VS Code opens a string exactly as given, where a parsed Uri would re-encode the
+    // page's query (its redirect_uri, say) and break the sign-in.
+    if (authUrl) void vscode.env.openExternal(authUrl as unknown as vscode.Uri);
   }
 
   /** The id becomes a --resume argument, so only a conversation Orbit listed is accepted. */

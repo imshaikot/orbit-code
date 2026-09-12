@@ -1,7 +1,7 @@
 // Every message that crosses a process or thread boundary in Orbit.
 // Shared by the extension host, the indexer worker thread and the webview.
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 11;
 
 export interface GraphNode {
   /** Workspace-relative POSIX path. Stable key; session events resolve to it. */
@@ -379,6 +379,10 @@ export type WebviewToHost =
   /** A fresh conversation becomes the one the drawer continues. */
   | { type: 'newSession' }
   | { type: 'refreshCatalog' }
+  /** The MCP view's Reload: a new process loads every MCP server afresh, answered by `catalog` messages as their states come in. */
+  | { type: 'reloadMcp' }
+  /** A server the last `catalog` listed; answered by `catalog` messages carrying its `pending` action, then its `note`. */
+  | { type: 'mcpAction'; server: string; action: McpAction }
   | { type: 'loadHistory' }
   /** VS Code's open dialog, for files to attach to the prompt; answered by `attachFiles` unless it was cancelled. */
   | { type: 'pickFiles' }
