@@ -174,16 +174,39 @@ function mcp(answerMs = 900, fail = false): void {
   setTimeout(() => batch.push({ key: conversation.key, event: { kind: 'mcp', server: 'docs', tool: 'search', phase: fail ? 'error' : 'done' } }), answerMs);
 }
 
-/** Six earlier conversations over files of the graph under test, some sharing files, the newest first. */
+/**
+ * Eighteen earlier conversations over files of the graph under test, some sharing files, the newest first: several
+ * today, fewer further back, as a workspace's history tends to be. Enough of them for the timeline to be wider than the panel.
+ */
 function conversations(): ConversationSummary[] {
   const now = Date.now();
   const file = (k: number) => graph.nodes[Math.floor(((k * GOLDEN) % 1) * graph.nodes.length)]?.id ?? 'README.md';
-  const titles = ['Cache the layout per graph hash', 'Why the camera drifts after a live update', 'A legend for file kinds', 'Speed up the regex scan', 'Explain the bubble layout', 'Fix the Esc order in the drawer'];
+  const titles = [
+    'Cache the layout per graph hash',
+    'Why the camera drifts after a live update',
+    'A legend for file kinds',
+    'Speed up the regex scan',
+    'Explain the bubble layout',
+    'Fix the Esc order in the drawer',
+    'Batch the watcher paths',
+    'Colours for Go and Dart',
+    'Why is this import unresolved',
+    'Tidy the permission card',
+    'Pack sibling bubbles tighter',
+    'Check the stream-json parser',
+    'Keep the transcript to 400 entries',
+    'Profile the edge shader',
+    'Move the tooltip off the pointer',
+    'Explain the dependency-cruiser batches',
+    'Resume a conversation after a crash',
+    'First look at the extension host',
+  ];
+  const hoursAgo = [1, 3, 6, 9, 26, 29, 50, 54, 78, 101, 124, 150, 175, 220, 270, 330, 420, 520];
   return titles.map((title, k) => ({
     id: `harness-conversation-${k + 1}`,
     title,
-    startedAt: now - (k + 1) * 26 * 3_600_000,
-    updatedAt: now - (k + 1) * 26 * 3_600_000 + 40 * 60_000,
+    startedAt: now - hoursAgo[k] * 3_600_000 - 40 * 60_000,
+    updatedAt: now - hoursAgo[k] * 3_600_000,
     promptCount: 3 + ((k * 5) % 9),
     prompts: [title, `Now look at ${file(k + 1)}`, 'Run the checks again'],
     model: k % 2 === 0 ? 'claude-opus-5' : 'claude-sonnet-5',

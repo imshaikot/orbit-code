@@ -973,8 +973,34 @@ try {
   at = await centreOf('.composer-toggle[data-kind="history"]');
   await click(at.x, at.y);
   await sleep(2600);
-  const historyOpen = await evaluate(`({ ...__orbit.constellation(), nodes: document.querySelectorAll('.history-node').length })`);
+  // Every conversation shown sits inside the field, however wide the timeline.
+  const inField = `(() => { const f = document.querySelector('.constellation-field').getBoundingClientRect(); return [...document.querySelectorAll('.history-node[data-shown="true"]')].every((n) => { const r = n.getBoundingClientRect(); const x = r.left + r.width / 2; const y = r.top + r.height / 2; return x >= f.left && x <= f.right && y >= f.top && y <= f.bottom; }); })()`;
+  const historyOpen = await evaluate(`({ ...__orbit.constellation(), nodes: document.querySelectorAll('.history-node').length, inField: ${inField} })`);
   await screenshot('6d-history.png');
+  // The time range under the timeline: the older thumb dragged to the middle of the track keeps only the conversations
+  // last active since, which spread out over the field again; All brings every one back.
+  let historyRange = null;
+  const thumbFrom = await centreOf('.tr-thumb[data-edge="from"]');
+  const railMiddle = await centreOf('.tr-rail');
+  if (thumbFrom && railMiddle) {
+    await mouse('mouseMoved', thumbFrom.x, thumbFrom.y);
+    await mouse('mousePressed', thumbFrom.x, thumbFrom.y);
+    for (let k = 1; k <= 8; k++) {
+      await mouse('mouseMoved', thumbFrom.x + ((railMiddle.x - thumbFrom.x) * k) / 8, thumbFrom.y);
+      await sleep(30);
+    }
+    await mouse('mouseReleased', railMiddle.x, thumbFrom.y);
+    await sleep(1600);
+    historyRange = await evaluate(
+      `({ range: __orbit.constellation().range, glyphs: __orbit.constellation().glyphs, ticks: document.querySelectorAll('.tr-tick').length, ticksIn: document.querySelectorAll('.tr-tick[data-in="true"]').length, sub: document.querySelector('.constellation-sub').textContent, inField: ${inField} })`,
+    );
+    await screenshot('6l-history-range.png');
+    const all = await centreOf('.tr-all');
+    if (all) await click(all.x, all.y);
+    await sleep(1200);
+    historyRange.restored = await evaluate(`__orbit.constellation().range === undefined && __orbit.constellation().glyphs === ${historyOpen.glyphs}`);
+    historyRange.ok = historyRange.range !== undefined && historyRange.glyphs > 0 && historyRange.glyphs < historyOpen.glyphs && historyRange.glyphs === historyRange.ticksIn && historyRange.inField && historyRange.restored;
+  }
   const conversation = await evaluate(`(() => { const node = document.querySelector('.history-node[data-shown="true"]'); if (!node) return null; const r = node.getBoundingClientRect(); return { id: node.dataset.conversation, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   let historyPanel = null;
   if (conversation) {
@@ -993,7 +1019,7 @@ try {
     await key('Escape', 'Escape', 27);
     await sleep(500);
   }
-  report.checks.history = { open: historyOpen, panel: historyPanel };
+  report.checks.history = { open: historyOpen, range: historyRange, panel: historyPanel };
 
   // MCP: a call to an MCP server's tool brings its station out beside Claude's star, joined by a beam; after the answer it leaves.
   await evaluate('__host.mcp(700)');
