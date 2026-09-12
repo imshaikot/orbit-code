@@ -16,6 +16,7 @@ import type {
   GraphFile,
   HostToWebview,
   LayoutSnapshot,
+  Question,
   SessionState,
   SessionsSnapshot,
   TranscriptEntry,
@@ -182,6 +183,27 @@ function ask(tool = 'Bash', detail = 'npm run build', always = 'Always allow in 
   conversation.state.permission = { id: `harness-permission-${conversation.key}-${conversation.nextEntry}`, tool, detail, ...(always ? { always } : {}) };
   sendState(conversation);
 }
+
+/** Claude's questions (AskUserQuestion) inside the running turn, reported like a permission request; `answers` keeps what came back. */
+function askQuestions(questions: Question[] = HARNESS_QUESTIONS): void {
+  const conversation = running();
+  if (conversation.state.phase !== 'working') return;
+  conversation.state.permission = { id: `harness-question-${conversation.key}-${conversation.nextEntry}`, tool: 'AskUserQuestion', detail: '', questions };
+  sendState(conversation);
+}
+
+const HARNESS_QUESTIONS: Question[] = [
+  {
+    question: 'Which checks should run?',
+    header: 'Checks',
+    options: [{ label: 'Typecheck', description: 'Both tsconfigs' }, { label: 'Harness' }, { label: 'Smoke' }],
+    multiSelect: true,
+  },
+  { question: 'Where should the change go?', header: 'Scope', options: [{ label: 'The webview' }, { label: 'The extension host' }], multiSelect: false },
+];
+
+/** Answers the session view sent for questions, oldest first (`undefined` for a skip). */
+const answered: (Record<string, string> | undefined)[] = [];
 
 /** A reply in the Markdown Claude writes, so the session view renders a heading, nested lists, a table, code and a quote. */
 function reply(prompt: string): string {
@@ -514,6 +536,7 @@ function receive(message: WebviewToHost): void {
     case 'permission': {
       const conversation = find(message.key);
       if (conversation?.state.permission?.id === message.id) {
+        if (conversation.state.permission.questions) answered.push(message.answer === 'deny' ? undefined : message.answers);
         conversation.state.permission = undefined;
         sendState(conversation);
       }
@@ -557,6 +580,9 @@ Object.assign(window, {
     think,
     /** Claude asks to use a tool; the session view's card answers it. */
     ask,
+    /** Claude asks questions (AskUserQuestion); the session view's question card answers them into `answered`. */
+    askQuestions,
+    answered,
     setVisible: (visible: boolean) => send({ type: 'visibility', visible }),
     /** Adds, removes and renames files and sends a live update; see `update`. */
     update,

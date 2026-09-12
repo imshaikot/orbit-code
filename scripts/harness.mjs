@@ -724,6 +724,29 @@ try {
     await click(allow.x, allow.y);
     await sleep(300);
     view.permission = { cardShown: allow.card, alwaysOffered: allow.always, bubbleWaiting: allow.bubble === 'waiting', answered: await evaluate(`document.querySelector('.permission').hidden && !__host.state().permission`) };
+    // Claude's questions (AskUserQuestion): the question card in place of the permission card, Answer armed only once
+    // every question has one, a multi-select pick and a single-choice pick reaching the host by question text.
+    await evaluate(`__host.askQuestions()`);
+    await sleep(300);
+    const optionAt = (question, label) =>
+      evaluate(`(() => { const b = [...document.querySelectorAll('.question .q-item')][${question}]?.querySelector('.q-option[data-label="${label}"]'); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    const asked = await evaluate(`(() => { const card = document.querySelector('.question'); return { shown: !card.hidden, permissionHidden: document.querySelector('.permission').hidden, items: card.querySelectorAll('.q-item').length, answerDisabled: card.querySelector('.question-actions .button.primary').disabled }; })()`);
+    for (const [question, label] of [[0, 'Harness'], [0, 'Typecheck'], [1, 'The webview']]) {
+      const at = await optionAt(question, label);
+      if (at) await click(at.x, at.y);
+      await sleep(120);
+    }
+    await screenshot('4e2-questions.png');
+    const armed = await evaluate(`(() => { const b = document.querySelector('.question-actions .button.primary'); const r = b.getBoundingClientRect(); return { disabled: b.disabled, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    if (!armed.disabled) await click(armed.x, armed.y);
+    await sleep(300);
+    view.questions = {
+      cardShown: asked.shown && asked.permissionHidden && asked.items === 2,
+      answerDisabledUntilAnswered: asked.answerDisabled,
+      answerArmed: !armed.disabled,
+      answered: await evaluate(`JSON.stringify(__host.answered.at(-1)) === JSON.stringify({ 'Which checks should run?': 'Typecheck, Harness', 'Where should the change go?': 'The webview' })`),
+      cardClosed: await evaluate(`document.querySelector('.question').hidden && !__host.state().permission`),
+    };
     await key('Escape', 'Escape', 27);
     await sleep(500);
     view.closedByEscape = await evaluate(`document.querySelector('.session-view').hidden`);
