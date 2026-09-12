@@ -14,7 +14,8 @@ export interface SessionActions {
   interrupt(key: string): void;
   newSession(): void;
   setOptions(options: Partial<SessionOptions>): void;
-  answerPermission(key: string, id: string, answer: PermissionAnswer): void;
+  /** `answers`: for a request asking questions, the answer to each, by question text. */
+  answerPermission(key: string, id: string, answer: PermissionAnswer, answers?: Record<string, string>): void;
   openFile(path: string): void;
   refreshCatalog(): void;
   loadHistory(): void;
@@ -70,7 +71,7 @@ export class SessionPanel {
     this.view = new SessionView(host, {
       prompt: (text, key) => this.reply(text, key),
       interrupt: (key) => actions.interrupt(key),
-      answerPermission: (key, id, answer) => actions.answerPermission(key, id, answer),
+      answerPermission: (key, id, answer, answers) => actions.answerPermission(key, id, answer, answers),
       openFile: (path) => actions.openFile(path),
       close: () => this.closeView(),
     });

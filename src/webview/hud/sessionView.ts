@@ -1,4 +1,4 @@
-import type { PermissionAnswer, SessionState, TranscriptEntry } from '../../shared/protocol';
+import type { PermissionAnswer, Question, SessionState, TranscriptEntry } from '../../shared/protocol';
 import { isWorkspaceId } from '../../shared/workspacePath';
 import { button, el } from './dom';
 import { renderMarkdown } from './markdown';
@@ -8,9 +8,16 @@ export interface SessionViewActions {
   /** A follow-up from the view's own composer, continuing the conversation `key`; false if it could not be sent. */
   prompt(text: string, key: string): boolean;
   interrupt(key: string): void;
-  answerPermission(key: string, id: string, answer: PermissionAnswer): void;
+  /** `answers`: for a request asking questions, the answer to each, by question text. */
+  answerPermission(key: string, id: string, answer: PermissionAnswer, answers?: Record<string, string>): void;
   openFile(path: string): void;
   close(): void;
+}
+
+/** What is picked on the question card for one question: option labels, and text of the user's own. */
+interface Pick {
+  labels: Set<string>;
+  other: string;
 }
 
 /** One conversation's transcript, kept rendered whether or not it is the one on show. */
@@ -48,6 +55,13 @@ export class SessionView {
   /** The agent's "don't ask again" choice, labelled by the request; hidden when it offers none. */
   private readonly always = button('', 'button permission-always');
   private readonly deny = button('Deny', 'button');
+  /** Claude's questions (AskUserQuestion), shown in place of the permission card: options to pick, or an answer of the user's own. */
+  private readonly question = el('div', 'question');
+  private readonly questionList = el('div', 'question-list');
+  private readonly skip = button('Skip', 'button', 'Let Claude go on without an answer');
+  private readonly submitAnswers = button('Answer', 'button primary');
+  /** The request the question card shows, and what is picked for each of its questions. */
+  private asked: { id: string; questions: readonly Question[]; picks: Map<string, Pick> } | undefined;
   private readonly input = el('textarea', 'sv-input');
   private readonly action = el('button', 'button primary sv-action', 'Send');
   /** Shown only once a turn has failed (an API error, or the process lost to the machine sleeping): resumes the same conversation without retyping anything. */
@@ -87,13 +101,20 @@ export class SessionView {
     decisions.append(this.deny, this.always, this.allow);
     this.permission.append(this.permissionTitle, this.permissionDetail, decisions);
 
+    this.question.hidden = true;
+    this.question.setAttribute('role', 'alertdialog');
+    this.question.setAttribute('aria-label', 'Claude asks');
+    const replies = el('div', 'question-actions');
+    replies.append(this.skip, this.submitAnswers);
+    this.question.append(el('p', 'question-title', 'Claude asks'), this.questionList, replies);
+
     const footer = el('form', 'sv-footer');
     this.input.rows = 1;
     this.input.setAttribute('aria-label', 'Reply');
     this.action.type = 'submit';
     footer.append(this.continueButton, this.input, this.action);
 
-    this.panel.append(head, this.transcript, this.permission, footer);
+    this.panel.append(head, this.transcript, this.permission, this.question, footer);
     this.root.append(this.panel);
     host.append(this.root);
 
@@ -117,6 +138,8 @@ export class SessionView {
     this.allow.addEventListener('click', () => this.answer('allow'));
     this.always.addEventListener('click', () => this.answer('always'));
     this.deny.addEventListener('click', () => this.answer('deny'));
+    this.skip.addEventListener('click', () => this.answer('deny'));
+    this.submitAnswers.addEventListener('click', () => this.answer('allow'));
     this.transcript.addEventListener('click', (event) => {
       const link = (event.target as HTMLElement).closest<HTMLElement>('[data-file]');
       if (link?.dataset.file) actions.openFile(link.dataset.file);
@@ -192,8 +215,14 @@ export class SessionView {
     if (state.key !== this.shown) return;
     this.state = state;
     const request = state.permission;
-    this.permission.hidden = !request;
-    if (request) {
+    const questions = request?.questions;
+    this.permission.hidden = !request || questions !== undefined;
+    this.question.hidden = questions === undefined;
+    if (request && questions) {
+      if (this.asked?.id !== request.id) this.renderQuestions(request.id, questions);
+      this.skip.disabled = this.answered === request.id;
+      this.refreshAnswers();
+    } else if (request) {
       this.permissionTitle.replaceChildren('Allow Claude to use ', el('b', undefined, toolLabel(request.tool)), '?');
       this.permissionDetail.textContent = request.detail;
       this.always.hidden = !request.always;
@@ -201,6 +230,7 @@ export class SessionView {
       this.allow.disabled = this.always.disabled = this.deny.disabled = this.answered === request.id;
     } else {
       this.answered = undefined;
+      this.asked = undefined;
     }
     this.refreshFooter();
     this.renderHead();
@@ -277,7 +307,7 @@ export class SessionView {
     this.state = state;
     this.answered = undefined;
     if (state) this.setState(state);
-    else this.permission.hidden = true;
+    else this.permission.hidden = this.question.hidden = true;
   }
 
   private submit(): void {
@@ -306,9 +336,91 @@ export class SessionView {
   private answer(answer: PermissionAnswer): void {
     const request = this.state?.permission;
     if (!request || this.answered === request.id || this.shown === undefined) return;
+    const answers = request.questions && answer !== 'deny' ? this.collectAnswers() : undefined;
+    if (request.questions && answer !== 'deny' && !answers) return;
     this.answered = request.id;
-    this.allow.disabled = this.always.disabled = this.deny.disabled = true;
-    this.actions.answerPermission(this.shown, request.id, answer);
+    this.allow.disabled = this.always.disabled = this.deny.disabled = this.skip.disabled = this.submitAnswers.disabled = true;
+    this.actions.answerPermission(this.shown, request.id, answer, answers);
+  }
+
+  /** A fieldset per question: its header and text, an option button each (radio, or checkbox for a multi-select question), and a field for an answer of the user's own. */
+  private renderQuestions(id: string, questions: readonly Question[]): void {
+    const picks = new Map<string, Pick>(questions.map((q) => [q.question, { labels: new Set<string>(), other: '' }]));
+    this.asked = { id, questions, picks };
+    this.questionList.replaceChildren(
+      ...questions.map((q) => {
+        const pick = picks.get(q.question) as Pick;
+        const item = el('fieldset', 'q-item');
+        const legend = el('legend', 'q-legend');
+        if (q.header) legend.append(el('span', 'q-header', q.header));
+        legend.append(el('span', 'q-text', q.question));
+
+        const other = el('input', 'q-other');
+        other.type = 'text';
+        other.placeholder = q.options.length > 0 ? 'Something else…' : 'Your answer…';
+        other.setAttribute('aria-label', `Your own answer to: ${q.question}`);
+        const choices = el('div', 'q-options');
+        choices.setAttribute('role', q.multiSelect ? 'group' : 'radiogroup');
+        const sync = () => {
+          for (const option of choices.children) option.setAttribute('aria-checked', String(pick.labels.has((option as HTMLElement).dataset.label ?? '')));
+          this.refreshAnswers();
+        };
+        for (const option of q.options) {
+          const choice = el('button', 'q-option');
+          choice.type = 'button';
+          choice.dataset.label = option.label;
+          choice.setAttribute('role', q.multiSelect ? 'checkbox' : 'radio');
+          choice.append(el('span', 'q-option-label', option.label));
+          if (option.description) choice.append(el('span', 'q-option-detail', option.description));
+          choice.addEventListener('click', () => {
+            if (!q.multiSelect) {
+              // One answer to a single-choice question: picking an option replaces whatever was typed.
+              pick.labels.clear();
+              pick.other = other.value = '';
+              pick.labels.add(option.label);
+            } else if (!pick.labels.delete(option.label)) {
+              pick.labels.add(option.label);
+            }
+            sync();
+          });
+          choices.append(choice);
+        }
+        other.addEventListener('input', () => {
+          pick.other = other.value;
+          if (!q.multiSelect && other.value.trim()) pick.labels.clear();
+          sync();
+        });
+        other.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' && !event.isComposing) {
+            event.preventDefault();
+            this.answer('allow');
+          }
+        });
+        sync();
+        if (q.options.length > 0) item.append(legend, choices, other);
+        else item.append(legend, other);
+        return item;
+      }),
+    );
+  }
+
+  /** The answer to every question on the card, as the host sends them on: picked labels in the order offered, then the user's own text, comma-separated. Undefined while one is unanswered. */
+  private collectAnswers(): Record<string, string> | undefined {
+    if (!this.asked) return undefined;
+    const answers: Record<string, string> = {};
+    for (const q of this.asked.questions) {
+      const pick = this.asked.picks.get(q.question);
+      if (!pick) return undefined;
+      const parts = q.options.filter((option) => pick.labels.has(option.label)).map((option) => option.label);
+      if (pick.other.trim()) parts.push(pick.other.trim());
+      if (parts.length === 0) return undefined;
+      answers[q.question] = parts.join(', ');
+    }
+    return answers;
+  }
+
+  private refreshAnswers(): void {
+    this.submitAnswers.disabled = !this.asked || this.answered === this.asked.id || !this.collectAnswers();
   }
 
   private renderHead(): void {

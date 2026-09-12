@@ -2225,6 +2225,122 @@ h5.md-heading {
   gap: 6px;
 }
 
+.question {
+  margin: 0 14px 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  background: rgba(165, 139, 255, 0.08);
+  border: 1px solid rgba(187, 168, 255, 0.5);
+  border-radius: 12px;
+}
+
+.question-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--claude);
+}
+
+.question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.q-item {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 0;
+}
+
+.q-legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.q-header {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 7px;
+  font-size: 11px;
+  color: var(--claude);
+  vertical-align: 1px;
+  background: rgba(165, 139, 255, 0.12);
+  border-radius: 999px;
+}
+
+.q-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.q-option {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-soft);
+  background: rgba(10, 16, 36, 0.72);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.q-option:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.q-option[aria-checked='true'] {
+  color: var(--ink);
+  background: rgba(165, 139, 255, 0.16);
+  border-color: var(--claude);
+}
+
+.q-option-label {
+  font-size: 12.5px;
+}
+
+.q-option-detail {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.q-other {
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.q-other:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: 1px;
+}
+
+.question-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .sv-footer {
   display: flex;
   align-items: flex-end;
