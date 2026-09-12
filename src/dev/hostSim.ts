@@ -44,7 +44,7 @@ const skillPrompts: Array<{ text: string; skills: string[]; files: string[] }> =
 const resumed: string[] = [];
 const logs: string[] = [];
 
-/** What the harness pretends Claude Code offers: the models 2.1.267 reports, skills of every scope that name each other, two MCP servers. */
+/** What the harness pretends Claude Code offers: the models 2.1.267 reports, skills of every scope that name each other, MCP servers in every state. */
 const catalog: AgentCatalog = {
   known: true,
   loading: false,
@@ -65,9 +65,33 @@ const catalog: AgentCatalog = {
     { name: 'frontend-design:frontend-design', description: 'Distinctive, intentional visual design.', scope: 'plugin', plugin: 'frontend-design', references: [] },
   ],
   mcpServers: [
-    { name: 'docs', status: 'connected', scope: 'user', tools: 4 },
-    { name: 'github', status: 'needs-auth', scope: 'user', tools: 0 },
+    { name: 'docs', status: 'connected', scope: 'user', tools: 4, transport: 'stdio', version: '1.4.0', toolNames: ['search', 'fetch', 'outline', 'cite'] },
+    { name: 'github', status: 'needs-auth', scope: 'user', tools: 0, transport: 'http' },
+    {
+      name: 'claude.ai Linear',
+      status: 'connected',
+      scope: 'claudeai',
+      tools: 9,
+      transport: 'claudeai-proxy',
+      version: '2.0.1',
+      toolNames: ['list_issues', 'get_issue', 'create_issue', 'update_issue', 'list_projects', 'list_teams', 'list_comments', 'create_comment', 'search_documentation'],
+    },
+    { name: 'sentry', status: 'failed', scope: 'project', tools: 0, transport: 'stdio', error: 'MCP error -32000: Connection closed' },
+    { name: 'local-db', status: 'disabled', scope: 'local', tools: 0, transport: 'stdio' },
   ],
+  mcp: { loading: false, checkedAt: Date.now() - 4 * 60_000 },
+};
+/** How each MCP server really is, as a Reload finds it; the MCP view's actions change it. */
+const mcpStatuses = new Map(catalog.mcpServers.map((server) => [server.name, server.status]));
+/** What the MCP view asked of the host, in order. */
+const mcpActions: Array<{ server: string; action: string }> = [];
+let mcpReloads = 0;
+const MCP_NOTES: Record<string, string> = {
+  reconnect: 'Reconnected.',
+  enable: 'Enabled in your Claude Code settings. Each conversation loads it from its next prompt.',
+  disable: 'Disabled in your Claude Code settings. Each conversation goes without it from its next prompt.',
+  signIn: 'Signed in.',
+  signOut: 'Signed out.',
 };
 let layoutClusters: number | undefined;
 /** The layout the webview holds for `graph`, which a live update extends. */
@@ -462,6 +486,12 @@ function fnv1a(text: string): string {
   return `harness-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
+/** The catalog with these MCP servers, sent the way the host sends every change to them. */
+function publishMcp(servers: AgentCatalog['mcpServers']): void {
+  catalog.mcpServers = servers;
+  send({ type: 'catalog', catalog: { ...catalog, mcpServers: servers.map((server) => ({ ...server })) } });
+}
+
 function receive(message: WebviewToHost): void {
   received.push(message.type);
   switch (message.type) {
@@ -504,6 +534,42 @@ function receive(message: WebviewToHost): void {
     case 'refreshCatalog':
       send({ type: 'catalog', catalog });
       break;
+    case 'reloadMcp':
+      // As the host: a new process finds every server connecting (the disabled ones aside), then how each really is.
+      mcpReloads++;
+      catalog.mcp = { ...catalog.mcp, loading: true, error: undefined };
+      publishMcp(catalog.mcpServers.map(({ note: _note, ...server }) => ({ ...server, status: mcpStatuses.get(server.name) === 'disabled' ? 'disabled' : 'pending' })));
+      setTimeout(() => {
+        catalog.mcp = { loading: false, checkedAt: Date.now() };
+        publishMcp(catalog.mcpServers.map((server) => ({ ...server, status: mcpStatuses.get(server.name) ?? server.status })));
+      }, 600);
+      break;
+    case 'mcpAction': {
+      const { server: name, action } = message;
+      const target = catalog.mcpServers.find((server) => server.name === name);
+      if (!target || target.pending) break;
+      mcpActions.push({ server: name, action });
+      publishMcp(catalog.mcpServers.map((server) => (server.name === name ? { ...server, pending: action, note: undefined } : server)));
+      setTimeout(() => {
+        // `sentry` never connects; anything else does what was asked.
+        const failed = action === 'reconnect' && name === 'sentry';
+        const status = failed ? 'failed' : action === 'disable' ? 'disabled' : action === 'signOut' ? 'needs-auth' : 'connected';
+        mcpStatuses.set(name, status);
+        publishMcp(
+          catalog.mcpServers.map(({ pending: _pending, ...server }) =>
+            server.name !== name
+              ? server
+              : {
+                  ...server,
+                  status,
+                  note: failed ? 'Could not reconnect it: MCP error -32000: Connection closed' : MCP_NOTES[action],
+                  ...(status === 'connected' && server.tools === 0 ? { tools: 3, toolNames: ['list_items', 'get_item', 'search'] } : {}),
+                },
+          ),
+        );
+      }, 500);
+      break;
+    }
     case 'loadHistory':
       send({ type: 'history', history: { loading: true, conversations: [] } });
       setTimeout(() => send({ type: 'history', history: { loading: false, conversations: conversations() } }), 150);
@@ -567,6 +633,12 @@ Object.assign(window, {
     logs,
     /** Claude calls a tool of the `docs` MCP server; see `mcp`. */
     mcp,
+    /** What the MCP view asked of the host (`mcpAction`), in order. */
+    mcpActions,
+    /** How many times the MCP view's Reload reached the host. */
+    mcpReloads: () => mcpReloads,
+    /** The MCP servers as the host last sent them. */
+    mcpServers: () => catalog.mcpServers.map(({ name, status, pending, note }) => ({ name, status, pending, note })),
     layoutClusters: () => layoutClusters,
     /** The current conversation's state: what the drawer continues. */
     state: () => ({ ...currentConversation().state }),

@@ -1002,6 +1002,59 @@ try {
   await screenshot('6f-mcp.png');
   report.checks.mcp = { stationsOut, labels: await evaluate(`[...document.querySelectorAll('.label-mcp')].filter((label) => !label.hidden).map((label) => label.textContent)`), leftAfterward: await waitFor(evaluate, '__orbit.world().mcpStations === 0', 8_000) };
 
+  // MCP view: the sheet's MCP button opens a constellation of the MCP servers, a 16-cell each, coloured by how it
+  // connected; a click on one that needs sign-in offers Sign in, which reaches the host and connects it; Reload asks every
+  // server again, and Esc closes the view.
+  const drawerOpen = `document.querySelector('.drawer').dataset.open === 'true'`;
+  if (!(await evaluate(drawerOpen))) {
+    at = await tabAt();
+    await click(at.x, at.y);
+    await sleep(700);
+  }
+  let mcpView = { opened: false };
+  at = await centreOf('.composer-toggle[data-kind="mcp"]');
+  if (at) {
+    await click(at.x, at.y);
+    await sleep(2400);
+    const mcpOpen = await evaluate(
+      `({ ...__orbit.constellation(), nodes: document.querySelectorAll('.mcp-node').length, shown: document.querySelectorAll('.mcp-node[data-shown="true"]').length, servers: __host.mcpServers().length, pressed: document.querySelector('.composer-toggle[data-kind="mcp"]').getAttribute('aria-pressed'), state: document.querySelector('.sheet-mcp').dataset.state, keys: [...document.querySelectorAll('.constellation-key')].map((k) => k.textContent), refresh: document.querySelector('.constellation-refresh').textContent })`,
+    );
+    await screenshot('6m-mcp-view.png');
+    mcpView = { opened: mcpOpen.mode === 'mcp' && mcpOpen.nodes === mcpOpen.servers && mcpOpen.pressed === 'true', open: mcpOpen };
+    const github = await centreOf('.mcp-node[data-server="github"][data-shown="true"]');
+    if (github) {
+      await click(github.x, github.y);
+      await sleep(400);
+      const offered = await evaluate(`({ pinned: __orbit.constellation().pinned, actions: [...document.querySelectorAll('.cd-action')].map((b) => b.dataset.action), title: document.querySelector('.cd-title').textContent })`);
+      const signIn = await centreOf('.cd-action[data-action="signIn"]');
+      if (signIn) await click(signIn.x, signIn.y);
+      const pendingShown = await waitFor(evaluate, `document.querySelector('.cd-action[data-action="signIn"]')?.disabled === true`, 2000);
+      const connected = await waitFor(evaluate, `__host.mcpServers().find((s) => s.name === 'github')?.status === 'connected'`, 4000);
+      await sleep(1200);
+      mcpView.signIn = {
+        offered,
+        pendingShown,
+        reachedHost: await evaluate(`__host.mcpActions.some((a) => a.server === 'github' && a.action === 'signIn')`),
+        connected,
+        afterward: await evaluate(`({ actions: [...document.querySelectorAll('.cd-action')].map((b) => b.dataset.action), text: document.querySelector('.cd-text').textContent, status: document.querySelector('.mcp-node[data-server="github"]')?.dataset.status })`),
+      };
+      await screenshot('6n-mcp-signed-in.png');
+    }
+    at = await centreOf('.constellation-refresh');
+    await click(at.x, at.y);
+    const disabledWhileLoading = await waitFor(evaluate, `document.querySelector('.constellation-refresh').disabled`, 1500);
+    const settled = await waitFor(evaluate, `!document.querySelector('.constellation-refresh').disabled && __host.mcpServers().every((s) => s.status !== 'pending')`, 4000);
+    mcpView.reload = { reachedHost: (await evaluate('__host.mcpReloads()')) === 1, disabledWhileLoading, settled, drawerCount: await evaluate(`document.querySelector('.sheet-mcp-count').textContent`) };
+    await key('Escape', 'Escape', 27);
+    await sleep(500);
+    mcpView.closedByEscape = await evaluate('!__orbit.constellation().mode');
+    if (await evaluate(drawerOpen)) {
+      await key('Escape', 'Escape', 27);
+      await sleep(500);
+    }
+  }
+  report.checks.mcpView = mcpView;
+
   // Hidden panel: the rAF loop must stop entirely.
   await evaluate('__host.setVisible(false)');
   await sleep(400);
