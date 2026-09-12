@@ -52,7 +52,7 @@ export class SceneController {
     this.current?.dispose();
     this.current = undefined;
     this.view.worldCleared();
-    this.view.graphChanged(summarize(delta, delta.layout ? 'reused' : 'computed'));
+    this.view.graphChanged(summarize(delta));
 
     let layout = delta.layout;
     if (!layout) {
@@ -113,22 +113,18 @@ export class SceneController {
     previous.dispose();
     this.current = world;
     const ms = performance.now() - started;
-    this.view.graphChanged(summarize(update, 'extended'));
+    this.view.graphChanged(summarize(update));
     this.host.log('info', `graph update applied: ${update.nodes.count.toLocaleString('en-US')} files (+${update.added.length} −${update.removed.length}) in ${Math.round(ms)} ms`);
     this.view.worldUpdated(world, ms);
   }
 }
 
-function summarize(graph: GraphContent, layout: GraphSummary['layout']): GraphSummary {
+function summarize(graph: GraphContent): GraphSummary {
   return {
     root: graph.root,
     files: graph.nodes.count,
     imports: graph.edges.length / 2,
     directories: graph.nodes.dirs.length,
-    stats: graph.stats,
-    indexedAt: graph.indexedAt,
-    cached: graph.cached,
-    layout,
     kinds: kindGroups(graph),
   };
 }

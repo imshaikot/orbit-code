@@ -1,4 +1,3 @@
-import type { IndexStats } from '../../shared/protocol';
 import { type Rgb, cssColor } from '../palette';
 import { button, el } from './dom';
 
@@ -18,11 +17,6 @@ export interface GraphSummary {
   files: number;
   imports: number;
   directories: number;
-  stats: IndexStats;
-  indexedAt: number;
-  cached: boolean;
-  /** Where the frozen layout came from: the cache, the layout worker, or a live update extending it. */
-  layout: 'reused' | 'computed' | 'extended';
   /** What the colours mean: file counts per colour, most files first. */
   kinds: KindGroup[];
 }
@@ -41,15 +35,12 @@ export interface IdentityActions {
   reindex(): void;
 }
 
-/** Top left: workspace name, counts, the file type colours, where the index came from, and the path of directories being looked into. */
+/** Top left: workspace name, counts, the file type colours, Reindex, and the path of directories being looked into. */
 export class Identity {
   private readonly workspace = el('span', 'workspace');
   private readonly counts = { files: el('b', undefined, '0'), imports: el('b', undefined, '0'), directories: el('b', undefined, '0') };
   private readonly legend = el('ul', 'legend');
-  private readonly provenance = el('span', 'provenance-text');
   private readonly crumbs = el('nav', 'crumbs');
-  private summary: GraphSummary | undefined;
-  private provenanceTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(
     host: HTMLElement,
@@ -69,7 +60,7 @@ export class Identity {
     const provenance = el('p', 'provenance');
     const reindex = button('Reindex', 'link-button', 'Start over: index every file again and lay the graph out from scratch. File changes update the graph without this.');
     reindex.addEventListener('click', () => actions.reindex());
-    provenance.append(this.provenance, ' ', reindex);
+    provenance.append(reindex);
 
     this.crumbs.setAttribute('aria-label', 'Location');
     this.setLocation(undefined);
@@ -80,13 +71,9 @@ export class Identity {
   }
 
   setGraph(summary: GraphSummary): void {
-    this.summary = summary;
     this.workspace.textContent = summary.root;
     for (const key of ['files', 'imports', 'directories'] as const) this.counts[key].textContent = summary[key].toLocaleString('en-US');
     this.renderLegend(summary.kinds);
-    this.renderProvenance();
-    clearInterval(this.provenanceTimer);
-    this.provenanceTimer = setInterval(() => this.renderProvenance(), 60_000);
   }
 
   /** Ancestors are links back up; the directory in view comes last. */
@@ -133,27 +120,4 @@ export class Identity {
     }
   }
 
-  private renderProvenance(): void {
-    const s = this.summary;
-    if (!s) return;
-    const changes = s.stats.changes;
-    const when = changes
-      ? `Updated ${relativeTime(s.indexedAt)}: +${changes.added} −${changes.removed} ~${changes.changed} files`
-      : s.cached
-        ? `Index from ${relativeTime(s.indexedAt)}, reused`
-        : `Indexed ${relativeTime(s.indexedAt)} in ${s.stats.ms.toLocaleString('en-US')} ms`;
-    const layout = `layout ${s.layout}`;
-    const extractors = `dependency-cruiser read ${s.stats.depcruiseFiles.toLocaleString('en-US')} files, the regex scan ${s.stats.regexFiles.toLocaleString('en-US')}`;
-    const truncated = s.stats.truncated ? ' Truncated at orbit.maxFiles.' : '';
-    this.provenance.textContent = `${when}, ${layout}. ${extractors}.${truncated}`;
-  }
-}
-
-function relativeTime(timestamp: number): string {
-  const minutes = Math.round((Date.now() - timestamp) / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} days ago`;
 }
