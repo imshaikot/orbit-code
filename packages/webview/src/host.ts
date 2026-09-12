@@ -1,12 +1,28 @@
 import type { HostToWebview, WebviewToHost } from '@orbit-code/protocol';
 
-declare function acquireVsCodeApi(): { postMessage(message: WebviewToHost): void };
+/** The page's way out to its host. */
+export interface HostTransport {
+  postMessage(message: WebviewToHost): void;
+}
+
+declare global {
+  /** Injected into a webview by VS Code and the editors built on it. */
+  function acquireVsCodeApi(): HostTransport;
+  interface Window {
+    /** Set before this script runs by any other host: a JetBrains JCEF browser, or a page a local Orbit server opens. */
+    orbitHost?: HostTransport;
+  }
+}
 
 type Handler<K extends HostToWebview['type']> = (message: Extract<HostToWebview, { type: K }>) => void;
 
-/** The webview's one channel to the extension host: typed posts out, typed subscriptions in. */
+/**
+ * The webview's one channel to its host: typed posts out, typed subscriptions in. Posts go through VS Code's webview
+ * API when the page has one, else through `window.orbitHost`; messages in arrive as `message` events on the window,
+ * however the host delivers them.
+ */
 export class HostBridge {
-  private readonly api = acquireVsCodeApi();
+  private readonly transport = connect();
   private readonly handlers = new Map<HostToWebview['type'], Array<(message: HostToWebview) => void>>();
 
   constructor() {
@@ -24,10 +40,16 @@ export class HostBridge {
   }
 
   post(message: WebviewToHost): void {
-    this.api.postMessage(message);
+    this.transport.postMessage(message);
   }
 
   log(level: 'info' | 'warn' | 'error', message: string): void {
     this.post({ type: 'log', level, message });
   }
+}
+
+function connect(): HostTransport {
+  if (typeof acquireVsCodeApi === 'function') return acquireVsCodeApi();
+  if (window.orbitHost) return window.orbitHost;
+  throw new Error('Orbit found no host to talk to: expected acquireVsCodeApi() or window.orbitHost.');
 }
