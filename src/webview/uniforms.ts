@@ -19,6 +19,9 @@ export function createSharedUniforms(state: THREE.DataTexture, stateWidth: numbe
     uFocusFrom: { value: 0 },
     /** 0 = showing uFocusFrom's contents, 1 = showing uFocus's. Follows the zoom (focus.ts). */
     uFocusMix: { value: 1 },
+    /** The directories around uFocus and uFocusFrom (-1 above the root): their other sub-directories show as ghosts. */
+    uFocusParent: { value: -1 },
+    uFocusFromParent: { value: -1 },
     uHover: { value: -1 },
     uHoverCluster: { value: -1 },
     /** The file the file menu is open for, -1 for none; the clock time it was chosen; 1 while its delete waits for confirmation. */
@@ -46,6 +49,8 @@ export const FOCUS_GLSL = /* glsl */ `
 uniform float uFocus;
 uniform float uFocusFrom;
 uniform float uFocusMix;
+uniform float uFocusParent;
+uniform float uFocusFromParent;
 
 float isDir(float value, float dir) {
   return abs(value - dir) < 0.5 ? 1.0 : 0.0;
@@ -54,6 +59,12 @@ float isDir(float value, float dir) {
 // 1 while the view shows the contents of directory \`dir\`, 0 otherwise, blended during a move.
 float shownIn(float dir) {
   return mix(isDir(dir, uFocusFrom), isDir(dir, uFocus), uFocusMix);
+}
+
+// 1 while directory \`dir\` is a sibling of the directory whose contents are shown (a sub-directory of the same parent),
+// blended during a move: what is beside the directory being looked into.
+float besideShown(float dir, float parent) {
+  return mix(isDir(parent, uFocusFromParent) * (1.0 - isDir(dir, uFocusFrom)), isDir(parent, uFocusParent) * (1.0 - isDir(dir, uFocus)), uFocusMix);
 }
 
 // The directory whose contents dominate the screen; its files and bubbles take the clicks.

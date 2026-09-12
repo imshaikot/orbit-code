@@ -8,7 +8,8 @@ import { ENCODE_ID_GLSL, FOCUS_GLSL, PICK_CLUSTER_BASE, type SharedUniforms } fr
 // directory's contents are shown, its sub-directories are drawn as bubbles and the directory itself as a
 // faint frame around them. One level further down, their own sub-directories show through them as glass
 // outlines, and fainter one level below that, so the nesting reads while zoomed out. A bubble brightens while
-// Claude works on files anywhere inside it.
+// Claude works on files anywhere inside it. The directories beside the one looked into (its parent's other
+// sub-directories) stay as ghosts, a faint rim each, so the view inside a directory keeps its place among its neighbours.
 
 /** aParent of a directory never drawn: a skipped one, or the root, whose contents fill the whole view anyway. */
 const SKIPPED = -2;
@@ -16,6 +17,8 @@ const SKIPPED = -2;
 const PREVIEW = 0.9;
 /** And two levels up, inside a sub-directory bubble of the directory on screen. */
 const DEEP_PREVIEW = 0.45;
+/** How strongly the directories beside the one looked into show, as rims. */
+const GHOST = 0.6;
 /** However small a bubble is on screen, its rim stays at least this many CSS pixels wide. */
 const RIM_PX = 2.2;
 
@@ -36,6 +39,7 @@ varying float vHover;
 varying float vBody;
 varying float vFrame;
 varying float vPreview;
+varying float vGhost;
 varying float vNear;
 varying float vRimScale;
 flat varying float vId;
@@ -44,13 +48,14 @@ void main() {
   float id = float(gl_InstanceID);
   float body = aParent < -0.5 ? 0.0 : shownIn(aParent);
   float frame = aParent < -1.5 ? 0.0 : shownIn(id);
+  float ghost = aParent < -0.5 ? 0.0 : ${GHOST.toFixed(2)} * besideShown(id, aParent);
   // Shown inside its parent's bubble while the directory around that one is on screen, fainter one level further out.
   float preview = max(aOuter < -0.5 ? 0.0 : ${PREVIEW.toFixed(2)} * shownIn(aOuter), aDeep < -0.5 ? 0.0 : ${DEEP_PREVIEW.toFixed(2)} * shownIn(aDeep));
 #ifdef PICK
   // Only the sub-directories of the directory on screen take clicks.
   if (aParent < -0.5 || isDir(aParent, shownDir()) < 0.5) {
 #else
-  if (body + frame + preview < 0.01) {
+  if (body + frame + preview + ghost < 0.01) {
 #endif
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -72,6 +77,7 @@ void main() {
   vBody = body;
   vFrame = frame;
   vPreview = preview;
+  vGhost = ghost;
   vCorner = position.xy;
   vColor = aColor;
   vId = id + ${PICK_CLUSTER_BASE}.0;
@@ -88,6 +94,7 @@ varying float vHover;
 varying float vBody;
 varying float vFrame;
 varying float vPreview;
+varying float vGhost;
 varying float vNear;
 varying float vRimScale;
 flat varying float vId;
@@ -111,7 +118,9 @@ void main() {
   float frame = rim * 0.2 + fresnel * 0.04;
   // Mostly rim, with little fill, so the files and lines inside stay readable through it.
   float preview = 0.03 + 0.2 * fresnel + 0.5 * rim + glow;
-  gl_FragColor = vec4(color * (body * vBody + frame * vFrame + preview * vPreview) * vNear, 1.0);
+  // A neighbour of the directory looked into: its rim alone, like the frame, plus the glow of Claude working in it.
+  float ghost = rim * 0.2 + fresnel * 0.03 + glow;
+  gl_FragColor = vec4(color * (body * vBody + frame * vFrame + preview * vPreview + ghost * vGhost) * vNear, 1.0);
 #endif
 }
 `;

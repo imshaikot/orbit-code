@@ -197,9 +197,13 @@ export class Focus {
   }
 
   private show(outer: number, inner: number, mix: number): void {
-    this.uniforms.uFocusFrom.value = outer;
-    this.uniforms.uFocus.value = inner;
-    this.uniforms.uFocusMix.value = mix;
+    const { uniforms, tree } = this;
+    uniforms.uFocusFrom.value = outer;
+    uniforms.uFocus.value = inner;
+    uniforms.uFocusMix.value = mix;
+    // The directories around them, whose other sub-directories show as ghosts (bubbles.ts).
+    uniforms.uFocusFromParent.value = tree.viewParent[outer];
+    uniforms.uFocusParent.value = tree.viewParent[inner];
     const shown = mix >= 0.5 ? inner : outer;
     if (shown !== this.cluster) {
       this.cluster = shown;
