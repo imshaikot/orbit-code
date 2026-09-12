@@ -15,6 +15,8 @@ export interface FileMenuActions {
   viewDiff(path: string): void;
   open(path: string): void;
   openInTab(path: string): void;
+  /** The file goes with the next prompt, as context. */
+  attach(path: string): void;
   rename(path: string, to: string): Promise<FileReply>;
   /** The scene collapses the file while the host deletes it. */
   remove(path: string): Promise<FileReply>;
@@ -78,7 +80,7 @@ export class FileMenu {
     head.append(this.swatch, title);
 
     this.items.setAttribute('role', 'menu');
-    this.items.append(this.diff, this.item('open', 'Open', 'here'), this.item('tab', 'Open in a tab', 'beside'), el('div', 'fm-rule'), this.item('rename', 'Rename…'), this.item('delete', 'Delete…'));
+    this.items.append(this.diff, this.item('open', 'Open', 'here'), this.item('tab', 'Open in a tab', 'beside'), this.item('attach', 'Attach to prompt', 'for Claude'), el('div', 'fm-rule'), this.item('rename', 'Rename…'), this.item('delete', 'Delete…'));
 
     const alarm = el('span', 'fm-alarm');
     alarm.setAttribute('aria-hidden', 'true');
@@ -272,6 +274,10 @@ export class FileMenu {
         break;
       case 'tab':
         this.actions.openInTab(target.path);
+        this.close();
+        break;
+      case 'attach':
+        this.actions.attach(target.path);
         this.close();
         break;
       case 'rename':

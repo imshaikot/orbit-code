@@ -7,8 +7,10 @@ import { SessionView } from './sessionView';
 import { type Turn, promptLine } from './turns';
 
 export interface SessionActions {
-  /** `key`: the conversation to continue; without one the host continues the current conversation, or starts one beside a busy one. */
-  prompt(text: string, skills: readonly string[], key?: string): void;
+  /** `files` go with it as context. `key`: the conversation to continue; without one the host continues the current conversation, or starts one beside a busy one. */
+  prompt(text: string, skills: readonly string[], files: readonly string[], key?: string): void;
+  /** Asks the host for files to attach to the prompt. */
+  pickFiles(): void;
   interrupt(key: string): void;
   newSession(): void;
   setOptions(options: Partial<SessionOptions>): void;
@@ -73,11 +75,12 @@ export class SessionPanel {
       close: () => this.closeView(),
     });
     this.drawer = new PromptDrawer(host, {
-      submit: (text, from, skills) => this.launch(text, from, skills),
+      submit: (text, from, skills, files) => this.launch(text, from, skills, files),
       setOptions: (options) => actions.setOptions(options),
       newSession: () => actions.newSession(),
       viewConversation: () => this.openView(null),
       toggle: (kind, from) => this.toggle(kind, from),
+      pickFiles: () => actions.pickFiles(),
       slash: (query, from) => this.slash(query, from),
       slashKey: (key) => this.slashKey(key),
       skillsChanged: (names) => this.constellation.setAttached(names),
@@ -193,6 +196,14 @@ export class SessionPanel {
     this.history.update(history.conversations);
   }
 
+  /** Files to go with the next prompt, from the host's picker or a file's card: the drawer opens with them attached. */
+  attachFiles(paths: readonly string[]): void {
+    if (this.view.isOpen) this.closeView();
+    if (this.history.isOpen) this.closeHistory();
+    this.drawer.open();
+    this.drawer.attachFiles(paths);
+  }
+
   /** Renders the constellation, if open. True while it needs frames. */
   frame(dt: number): boolean {
     return this.constellation.frame(dt);
@@ -218,7 +229,7 @@ export class SessionPanel {
 
     for (const entry of entries) {
       if (entry.kind === 'prompt') {
-        const turn: Turn = { key, id: entry.id, prompt: entry.text, skills: entry.skills, startedAt: Date.now(), end: undefined, lastTool: undefined, replying: false };
+        const turn: Turn = { key, id: entry.id, prompt: entry.text, skills: entry.skills, files: entry.files, startedAt: Date.now(), end: undefined, lastTool: undefined, replying: false };
         turns.push(turn);
         if (turns.length > MAX_TURNS) turns.splice(0, turns.length - MAX_TURNS);
         if (reset) continue;
@@ -251,12 +262,12 @@ export class SessionPanel {
    * From the drawer: the prompt goes to the host and flies out of the composer into a new bubble. The host continues
    * the current conversation, or starts one beside it while it is busy; the bubble learns which when that one starts working.
    */
-  private launch(text: string, from: DOMRect, skills: readonly string[]): boolean {
+  private launch(text: string, from: DOMRect, skills: readonly string[], files: readonly string[]): boolean {
     if (this.currentState.phase === 'unavailable') return false;
     if (this.view.isOpen) this.closeView();
     if (this.history.isOpen) this.closeHistory();
-    this.actions.prompt(text, skills);
-    this.bubbles.launch(promptLine(text, skills), from, true);
+    this.actions.prompt(text, skills, files);
+    this.bubbles.launch(promptLine(text, skills, files), from, true);
     return true;
   }
 
@@ -338,7 +349,7 @@ export class SessionPanel {
   /** From the open view: the conversation continues in place, and the new session's bubble waits under the view. */
   private reply(text: string, key: string): boolean {
     if (this.conversations.get(key)?.state.phase !== 'idle') return false;
-    this.actions.prompt(text, [], key);
+    this.actions.prompt(text, [], [], key);
     const bubble = this.bubbles.launch(text, undefined, false, key);
     this.opened = bubble;
     this.bubbles.cover(bubble);

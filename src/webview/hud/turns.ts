@@ -13,6 +13,8 @@ export interface Turn {
   readonly prompt: string;
   /** Skills invoked with the prompt. */
   readonly skills?: readonly string[];
+  /** Files attached to the prompt as context. */
+  readonly files?: readonly string[];
   /** When the webview first saw it; for replayed history that is the replay. */
   readonly startedAt: number;
   end: TurnEnd | undefined;
@@ -48,9 +50,14 @@ export function toolLabel(name: string): string {
   return mcp ? `${mcp.server} › ${mcp.tool}` : name;
 }
 
-/** What a prompt says in a bubble or a title: its text, else the skills it invokes. */
-export function promptLine(text: string, skills: readonly string[] | undefined): string {
-  return text || (skills ?? []).map((skill) => `/${skill}`).join(' ') || 'Claude session';
+/** What a prompt says in a bubble or a title: its text, else the skills it invokes, else the files attached to it. */
+export function promptLine(text: string, skills: readonly string[] | undefined, files?: readonly string[]): string {
+  return text || (skills ?? []).map((skill) => `/${skill}`).join(' ') || (files ?? []).map(fileName).join(' ') || 'Claude session';
+}
+
+/** A path's last segment, for a chip or a title. */
+export function fileName(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
 }
 
 export function outcomeLine(end: TurnEnd): string {

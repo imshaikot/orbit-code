@@ -1,18 +1,20 @@
 import type { AgentCatalog, PermissionMode, SessionOptions, SessionState } from '../../shared/protocol';
 import { button, el } from './dom';
 import { EffortMeter } from './effortMeter';
-import { dollars } from './turns';
+import { dollars, fileName } from './turns';
 
 export type DrawerToggle = 'skills' | 'history';
 
 export interface DrawerActions {
-  /** Sends the prompt with the attached skills; false if it could not be sent. `from` is where the typed text sat, for the launch animation. */
-  submit(text: string, from: DOMRect, skills: readonly string[]): boolean;
+  /** Sends the prompt with the attached skills and files; false if it could not be sent. `from` is where the typed text sat, for the launch animation. */
+  submit(text: string, from: DOMRect, skills: readonly string[], files: readonly string[]): boolean;
   setOptions(options: Partial<SessionOptions>): void;
   newSession(): void;
   viewConversation(): void;
   /** A toggle in the composer bar was pressed: show or hide that panel. */
   toggle(kind: DrawerToggle, from: DOMRect): void;
+  /** Files was pressed: the host's open dialog picks files to attach. */
+  pickFiles(): void;
   /** The prompt is a slash command being typed (`/gra`): `query` is the text after the slash, undefined once it is not. */
   slash(query: string | undefined, from: DOMRect): void;
   /** A key pressed while a slash command is being typed; true if the skills panel took it (a pick, or moving the pick). */
@@ -40,6 +42,8 @@ const FALLBACK_MODELS: readonly Choice[] = [
 ];
 /** Skills one prompt can carry; the host takes no more. */
 const MAX_SKILLS = 8;
+/** Files one prompt can carry; the host takes no more. */
+const MAX_FILES = 20;
 const MODE_LABELS: Record<PermissionMode, string> = {
   default: 'Ask before edits',
   acceptEdits: 'Accept edits',
@@ -71,10 +75,13 @@ export class PromptDrawer {
   private readonly chips = el('div', 'composer-skills');
   private readonly skillsToggle = button('', 'composer-toggle', 'Skills Claude Code offers here: drag one onto the prompt to attach it');
   private readonly historyToggle = button('', 'composer-toggle', 'Earlier conversations of this workspace');
+  private readonly filesToggle = button('', 'composer-toggle', 'Attach files for Claude to read with the prompt');
   private readonly mcp = el('span', 'sheet-mcp');
   /** Where the skill and history panels open, on the sheet's top edge. */
   readonly overlay = el('div', 'drawer-overlay');
   private attached: string[] = [];
+  /** Files attached to the prompt: workspace ids, or absolute paths outside the workspace. */
+  private files: string[] = [];
   private catalog: AgentCatalog | undefined;
   private state: SessionState | undefined;
   private dragged = false;
@@ -111,7 +118,7 @@ export class PromptDrawer {
     this.mode.title = 'What Claude may do without asking';
     this.action.type = 'submit';
     this.chips.hidden = true;
-    this.chips.setAttribute('aria-label', 'Skills attached to the prompt');
+    this.chips.setAttribute('aria-label', 'Skills and files attached to the prompt');
     const toggles = [
       [this.skillsToggle, 'skills', 'Skills'],
       [this.historyToggle, 'history', 'History'],
@@ -124,8 +131,13 @@ export class PromptDrawer {
       toggle.append(icon, label);
       toggle.addEventListener('click', () => actions.toggle(kind, toggle.getBoundingClientRect()));
     }
+    this.filesToggle.dataset.kind = 'files';
+    const clip = el('span', 'composer-toggle-icon composer-toggle-files');
+    clip.setAttribute('aria-hidden', 'true');
+    this.filesToggle.append(clip, 'Files');
+    this.filesToggle.addEventListener('click', () => actions.pickFiles());
     const bar = el('div', 'composer-bar');
-    bar.append(this.skillsToggle, this.historyToggle, this.model, this.effort.element, this.mode, this.action);
+    bar.append(this.filesToggle, this.skillsToggle, this.historyToggle, this.model, this.effort.element, this.mode, this.action);
     form.append(this.chips, this.input, bar);
 
     this.sheet.append(this.grabber, context, form);
@@ -209,7 +221,7 @@ export class PromptDrawer {
     this.state = state;
     const { phase } = state;
     this.tab.dataset.phase = phase;
-    this.input.disabled = this.model.disabled = this.mode.disabled = phase === 'unavailable';
+    this.input.disabled = this.model.disabled = this.mode.disabled = this.filesToggle.disabled = phase === 'unavailable';
     this.effort.setDisabled(phase === 'unavailable');
     this.syncModels();
     const modes = PICKABLE_MODES.includes(state.options.permissionMode) ? PICKABLE_MODES : [...PICKABLE_MODES, state.options.permissionMode];
@@ -275,23 +287,30 @@ export class PromptDrawer {
     if (!this.attached.includes(name) && this.attached.length < MAX_SKILLS) {
       this.attached = [...this.attached, name];
       this.renderChips();
-      const chip = this.chips.lastElementChild;
-      if (chip && !reducedMotion()) {
-        chip.animate(
-          [
-            { transform: 'scale(0.3)', opacity: 0 },
-            { transform: 'scale(1.1)', opacity: 1, offset: 0.6 },
-            { transform: 'none', opacity: 1 },
-          ],
-          { duration: 440, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
-        );
-      }
+      this.popIn([...this.chips.querySelectorAll('.skill-chip')].slice(-1));
     }
     if (this.isOpen) this.input.focus({ preventScroll: true });
   }
 
   detach(name: string): void {
     this.attached = this.attached.filter((attached) => attached !== name);
+    this.renderChips();
+    this.input.focus({ preventScroll: true });
+  }
+
+  /** Attaches files to the prompt as context: each pops into the row above the input, after any skills. */
+  attachFiles(paths: readonly string[]): void {
+    const added = [...new Set(paths)].filter((path) => !this.files.includes(path)).slice(0, Math.max(0, MAX_FILES - this.files.length));
+    if (added.length > 0) {
+      this.files = [...this.files, ...added];
+      this.renderChips();
+      this.popIn([...this.chips.querySelectorAll('.file-chip')].slice(-added.length));
+    }
+    if (this.isOpen) this.input.focus({ preventScroll: true });
+  }
+
+  detachFile(path: string): void {
+    this.files = this.files.filter((file) => file !== path);
     this.renderChips();
     this.input.focus({ preventScroll: true });
   }
@@ -308,10 +327,11 @@ export class PromptDrawer {
 
   private send(): void {
     const text = this.input.value.trim();
-    if ((!text && this.attached.length === 0) || !this.state || this.state.phase === 'unavailable') return;
-    if (!this.actions.submit(text, this.input.getBoundingClientRect(), [...this.attached])) return;
+    if ((!text && this.attached.length === 0 && this.files.length === 0) || !this.state || this.state.phase === 'unavailable') return;
+    if (!this.actions.submit(text, this.input.getBoundingClientRect(), [...this.attached], [...this.files])) return;
     this.input.value = '';
     this.attached = [];
+    this.files = [];
     this.renderChips();
     this.autosize();
     this.refreshAction();
@@ -389,7 +409,7 @@ export class PromptDrawer {
   }
 
   private refreshAction(): void {
-    this.action.disabled = !this.state || this.state.phase === 'unavailable' || (this.input.value.trim() === '' && this.attached.length === 0);
+    this.action.disabled = !this.state || this.state.phase === 'unavailable' || (this.input.value.trim() === '' && this.attached.length === 0 && this.files.length === 0);
   }
 
   /** The models Claude Code offers, else the fallback aliases; a setting naming another model is listed too. The effort meter offers what the selected model takes. */
@@ -414,10 +434,37 @@ export class PromptDrawer {
         chip.append(icon, el('span', 'skill-chip-name', `/${name}`), remove);
         return chip;
       }),
+      ...this.files.map((path) => {
+        const chip = el('span', 'file-chip');
+        chip.dataset.path = path;
+        chip.title = path;
+        const icon = el('span', 'file-chip-icon');
+        icon.setAttribute('aria-hidden', 'true');
+        const remove = button('', 'file-chip-remove', `Detach ${path}`);
+        remove.setAttribute('aria-label', `Detach ${path}`);
+        remove.addEventListener('click', () => this.detachFile(path));
+        chip.append(icon, el('span', 'file-chip-name', fileName(path)), remove);
+        return chip;
+      }),
     );
-    this.chips.hidden = this.attached.length === 0;
+    this.chips.hidden = this.attached.length === 0 && this.files.length === 0;
     this.actions.skillsChanged([...this.attached]);
     this.refreshAction();
+  }
+
+  /** Chips just attached pop in. */
+  private popIn(chips: readonly Element[]): void {
+    if (reducedMotion()) return;
+    for (const chip of chips) {
+      chip.animate(
+        [
+          { transform: 'scale(0.3)', opacity: 0 },
+          { transform: 'scale(1.1)', opacity: 1, offset: 0.6 },
+          { transform: 'none', opacity: 1 },
+        ],
+        { duration: 440, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
+      );
+    }
   }
 
   private autosize(): void {

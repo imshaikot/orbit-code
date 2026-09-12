@@ -267,7 +267,7 @@ export class ClaudeBubbles {
   }
 
   private render(bubble: ClaudeBubble): void {
-    const title = bubble.turn ? promptLine(bubble.turn.prompt, bubble.turn.skills) : (bubble.prompt ?? 'Claude session');
+    const title = bubble.turn ? promptLine(bubble.turn.prompt, bubble.turn.skills, bubble.turn.files) : (bubble.prompt ?? 'Claude session');
     bubble.root.dataset.phase = bubble.phase;
     bubble.title.textContent = title;
     if (bubble.ended) {

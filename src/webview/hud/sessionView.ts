@@ -1,7 +1,8 @@
 import type { PermissionAnswer, SessionState, TranscriptEntry } from '../../shared/protocol';
+import { isWorkspaceId } from '../../shared/workspacePath';
 import { button, el } from './dom';
 import { renderMarkdown } from './markdown';
-import { type Turn, activityOf, clock, dollars, outcomeLine, promptLine, seconds, toolLabel } from './turns';
+import { type Turn, activityOf, clock, dollars, fileName, outcomeLine, promptLine, seconds, toolLabel } from './turns';
 
 export interface SessionViewActions {
   /** A follow-up from the view's own composer, continuing the conversation `key`; false if it could not be sent. */
@@ -314,7 +315,7 @@ export class SessionView {
     const state = this.state;
     const turn = this.turn;
     this.root.dataset.phase = turn?.end ? turn.end.outcome : state?.permission ? 'waiting' : (state?.phase ?? 'unavailable');
-    this.title.textContent = turn ? promptLine(turn.prompt, turn.skills) : 'This conversation';
+    this.title.textContent = turn ? promptLine(turn.prompt, turn.skills, turn.files) : 'This conversation';
     this.meta.textContent = state?.model ?? (state?.options.model || '');
     this.path.textContent = this.time.textContent = '';
     if (!state) return;
@@ -382,6 +383,18 @@ function renderEntry(entry: TranscriptEntry): HTMLElement {
   switch (entry.kind) {
     case 'prompt':
       for (const skill of entry.skills ?? []) item.append(el('span', 't-skill', `/${skill}`));
+      for (const file of entry.files ?? []) {
+        // A workspace file opens like any link in the transcript; one from outside the workspace is only named.
+        if (isWorkspaceId(file)) {
+          const link = button(fileName(file), 't-attached t-link', `Open ${file}`);
+          link.dataset.file = file;
+          item.append(link);
+        } else {
+          const name = el('span', 't-attached', fileName(file));
+          name.title = file;
+          item.append(name);
+        }
+      }
       item.append(entry.text);
       break;
     case 'text':

@@ -26,6 +26,8 @@
   /* A skill's tesseract and a conversation's gyroscope, as masks for icons. */
   --tesseract: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M3 3h18v18H3zM8.5 8.5h7v7h-7zM3 3l5.5 5.5M21 3l-5.5 5.5M21 21l-5.5-5.5M3 21l5.5-5.5'/%3E%3C/svg%3E");
   --gyroscope: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7'%3E%3Ccircle cx='12' cy='12' r='9.5'/%3E%3Cellipse cx='12' cy='12' rx='9.5' ry='3.5'/%3E%3Cellipse cx='12' cy='12' rx='3.5' ry='9.5'/%3E%3C/svg%3E");
+  /* A paperclip for files attached to a prompt, as a mask for icons. */
+  --paperclip: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.9-8.9a3.7 3.7 0 0 1 5.2 5.2l-8.9 8.9a1.8 1.8 0 0 1-2.6-2.6l8.2-8.2'/%3E%3C/svg%3E");
   /* Claude's spark, used as a mask so it takes any colour. */
   --spark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.00 10.60L12.00 1.20M12.77 10.83L16.52 5.16M13.18 11.25L20.62 6.55M13.40 12.07L19.59 12.38M13.21 12.70L21.18 17.30M12.77 13.17L16.85 19.34M11.96 13.40L11.70 21.90M11.24 13.18L7.71 18.64M10.80 12.72L2.84 17.53M10.60 11.94L3.61 11.66M10.75 11.36L3.01 7.39M11.32 10.77L8.14 4.99' stroke='%23000' stroke-width='2.3' stroke-linecap='round' fill='none'/%3E%3C/svg%3E");
 }
@@ -758,6 +760,10 @@ select:focus-visible {
   --glyph: var(--gyroscope);
 }
 
+.composer-toggle-files {
+  --glyph: var(--paperclip);
+}
+
 .composer-toggle[aria-pressed='true'] .composer-toggle-icon {
   animation: spark-turn 9s linear infinite;
 }
@@ -790,7 +796,40 @@ select:focus-visible {
   mask: var(--tesseract) center / contain no-repeat;
 }
 
-.skill-chip-remove {
+/* An attached file is cyan, the colour of a file Claude reads. */
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 3px 2px 8px;
+  font-family: var(--code);
+  font-size: 11.5px;
+  color: var(--ink);
+  background: rgba(111, 227, 255, 0.1);
+  border: 1px solid rgba(111, 227, 255, 0.4);
+  border-radius: 999px;
+}
+
+.file-chip-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: var(--read);
+  -webkit-mask: var(--paperclip) center / contain no-repeat;
+  mask: var(--paperclip) center / contain no-repeat;
+}
+
+.file-chip-name {
+  min-width: 0;
+  max-width: 22em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-chip-remove,
+.file-chip-remove {
   position: relative;
   flex: none;
   width: 18px;
@@ -803,7 +842,9 @@ select:focus-visible {
 }
 
 .skill-chip-remove::before,
-.skill-chip-remove::after {
+.skill-chip-remove::after,
+.file-chip-remove::before,
+.file-chip-remove::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -815,11 +856,13 @@ select:focus-visible {
   transform: translate(-50%, -50%) rotate(45deg);
 }
 
-.skill-chip-remove::after {
+.skill-chip-remove::after,
+.file-chip-remove::after {
   transform: translate(-50%, -50%) rotate(-45deg);
 }
 
-.skill-chip-remove:hover {
+.skill-chip-remove:hover,
+.file-chip-remove:hover {
   background: rgba(214, 222, 255, 0.14);
 }
 
@@ -1921,6 +1964,24 @@ select:focus-visible {
   border-radius: 999px;
 }
 
+/* A file attached to the prompt; under .t-prompt so it keeps its pill over .t-link's reset. */
+.t-prompt .t-attached {
+  display: inline-block;
+  max-width: 24em;
+  margin: 0 6px 2px 0;
+  padding: 0 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--code);
+  font-size: 11.5px;
+  color: var(--read);
+  vertical-align: bottom;
+  background: rgba(111, 227, 255, 0.1);
+  border: 1px solid rgba(111, 227, 255, 0.36);
+  border-radius: 999px;
+}
+
 .t-tool-detail {
   min-width: 0;
   overflow: hidden;
@@ -2553,6 +2614,10 @@ h5.md-heading {
 
 .fm-item-tab {
   --fm-icon: var(--fm-icon-tab);
+}
+
+.fm-item-attach {
+  --fm-icon: var(--paperclip);
 }
 
 .fm-item-rename {

@@ -51,6 +51,7 @@ const fileMenu = new FileMenu(hud, {
   viewDiff: (path) => editor.open(path, 'changes'),
   open: (path) => editor.open(path, 'code'),
   openInTab: (path) => void files.send(path, { kind: 'show', diff: false }),
+  attach: (path) => session.attachFiles([path]),
   rename: async (path, to) => {
     const reply = await files.send(path, { kind: 'rename', to });
     if (reply.kind === 'renamed') editor.renamed(path, reply.to);
@@ -85,7 +86,9 @@ const editor = new EditorSheet(hud, files, nonce, {
 const session = new SessionPanel(
   hud,
   {
-    prompt: (text, skills, key) => host.post({ type: 'prompt', text, ...(skills.length > 0 ? { skills: [...skills] } : {}), ...(key !== undefined ? { key } : {}) }),
+    prompt: (text, skills, attached, key) =>
+      host.post({ type: 'prompt', text, ...(skills.length > 0 ? { skills: [...skills] } : {}), ...(attached.length > 0 ? { files: [...attached] } : {}), ...(key !== undefined ? { key } : {}) }),
+    pickFiles: () => host.post({ type: 'pickFiles' }),
     interrupt: (key) => host.post({ type: 'interrupt', key }),
     newSession: () => host.post({ type: 'newSession' }),
     setOptions: (options) => host.post({ type: 'sessionOptions', options }),
@@ -210,6 +213,7 @@ host.on('session', ({ state }) => {
 host.on('transcript', ({ key, reset, entries }) => session.appendTranscript(key, reset, entries));
 host.on('catalog', ({ catalog }) => session.setCatalog(catalog));
 host.on('history', ({ history }) => session.setHistory(history));
+host.on('attachFiles', ({ files: picked }) => session.attachFiles(picked));
 host.on('visibility', ({ visible }) => loop.setPanelVisible(visible));
 
 window.addEventListener('error', (event) => host.log('error', event.message));
