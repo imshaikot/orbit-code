@@ -48,12 +48,12 @@ const catalog: AgentCatalog = {
   known: true,
   loading: false,
   models: [
-    { value: '', label: 'Default (recommended)', description: 'Sonnet 5 · Efficient for routine tasks' },
-    { value: 'sonnet', label: 'Sonnet', description: 'Sonnet 5 · Efficient for routine tasks' },
-    { value: 'claude-fable-5-1[1m]', label: 'Fable', description: 'Fable 5.1 · Most capable for your hardest and longest-running tasks' },
-    { value: 'opus', label: 'Opus', description: 'Opus 5 · Best for everyday, complex tasks' },
-    { value: 'haiku', label: 'Haiku', description: 'Haiku 4.5 · Fastest for quick answers' },
-    { value: 'opus[1m]', label: 'Opus (1M context)', description: 'Opus 5 with 1M context · Best for everyday, complex tasks' },
+    { value: '', label: 'Default (recommended)', description: 'Sonnet 5 · Efficient for routine tasks', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+    { value: 'sonnet', label: 'Sonnet', description: 'Sonnet 5 · Efficient for routine tasks', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+    { value: 'claude-fable-5-1[1m]', label: 'Fable', description: 'Fable 5.1 · Most capable for your hardest and longest-running tasks', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+    { value: 'opus', label: 'Opus', description: 'Opus 5 · Best for everyday, complex tasks', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+    { value: 'haiku', label: 'Haiku', description: 'Haiku 4.5 · Fastest for quick answers', efforts: [] },
+    { value: 'opus[1m]', label: 'Opus (1M context)', description: 'Opus 5 with 1M context · Best for everyday, complex tasks', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
   ],
   skills: [
     { name: 'claude-in-orbit', description: 'How Claude Code runs inside Orbit, and how to change it safely.', argumentHint: 'Describe the change', scope: 'project', file: '.claude/skills/claude-in-orbit/SKILL.md', references: ['graph-pipeline', 'orbit-extension'] },

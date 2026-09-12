@@ -804,6 +804,39 @@ try {
   await click(at.x, at.y);
   await sleep(600);
   const models = await evaluate(`[...document.querySelector('.composer-select').options].map((option) => option.textContent)`);
+
+  // Effort: a click on a bar picks that level and reaches the host, an arrow key moves it, a model that takes no effort
+  // level (Haiku, as 2.1.267 reports it) dims the meter and keeps the pick, and the ring goes back to Claude Code's default.
+  const effortState = `(() => { const m = document.querySelector('.composer-effort'); return { level: m.dataset.level, offered: m.dataset.offered, lit: m.querySelectorAll('.effort-bar[data-lit="true"]').length, checked: m.querySelector('[aria-checked="true"]')?.dataset.effort ?? null, host: __host.state().options.effort, disabled: [...m.querySelectorAll('.effort-bar')].every((bar) => bar.disabled) }; })()`;
+  const pickModel = (value) => evaluate(`(() => { const s = document.querySelector('.composer-select'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change')); })()`);
+  const effortInitial = await evaluate(effortState);
+  at = await centreOf('.effort-bar[data-effort="high"]');
+  await click(at.x, at.y);
+  await sleep(600);
+  const effortClicked = await evaluate(effortState);
+  await screenshot('6i-effort.png');
+  await key('ArrowRight', 'ArrowRight', 39);
+  await sleep(400);
+  const effortKeyboard = await evaluate(effortState);
+  await pickModel('haiku');
+  await sleep(400);
+  const effortHaiku = await evaluate(effortState);
+  await screenshot('6j-effort-not-offered.png');
+  await pickModel('');
+  await sleep(400);
+  at = await centreOf('.effort-auto');
+  await click(at.x, at.y);
+  await sleep(400);
+  const effortBack = await evaluate(effortState);
+  await evaluate(`document.querySelector('.composer-input').focus()`);
+  report.checks.effort = {
+    initial: effortInitial,
+    haiku: effortHaiku,
+    pickedByClick: effortClicked.level === 'high' && effortClicked.checked === 'high' && effortClicked.host === 'high' && effortClicked.lit === 3,
+    pickedByKey: effortKeyboard.level === 'xhigh' && effortKeyboard.host === 'xhigh' && effortKeyboard.lit === 4,
+    dimmedForHaiku: effortHaiku.offered === 'false' && effortHaiku.disabled && effortHaiku.host === 'xhigh',
+    backToAuto: effortBack.level === 'auto' && effortBack.checked === '' && effortBack.host === '' && effortBack.lit === 0,
+  };
   at = await centreOf('.composer-toggle[data-kind="skills"]');
   await click(at.x, at.y);
   await sleep(2600);
