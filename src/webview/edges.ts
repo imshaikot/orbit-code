@@ -16,7 +16,9 @@ export const FIRING_FADE_S = 1.2;
 /** Distinct firing rhythms. Whole numbers, so interpolating between a line's two vertices can't perturb them. */
 const NEURONS = 1024;
 /** How strongly a directory's lines show through its bubble, one level up, before the view zooms in. */
-const PREVIEW = 0.4;
+const PREVIEW = 0.75;
+/** And two levels up, inside a sub-directory bubble of the directory on screen. */
+const DEEP_PREVIEW = 0.35;
 
 const VERTEX = /* glsl */ `
 ${STATE_GLSL}
@@ -24,6 +26,7 @@ ${FOCUS_GLSL}
 attribute vec4 aInfo; // distance along the segment, per-segment offset, this end's file, the other end's file (-1 at a bubble)
 attribute vec4 aEdge; // directory whose contents it belongs to, base alpha, 1 when an end is a bubble, firing rhythm of the source end
 attribute float aOuter; // the directory shown around that one, from where the line shows faintly through its bubble
+attribute float aDeep; // the directory shown around aOuter, from where it shows fainter still
 varying float vAlong;
 varying float vOffset;
 varying float vAlpha;
@@ -46,7 +49,8 @@ void main() {
     // The lines of a file being deleted go with it.
     gone = smoothstep(0.0, 0.3, max(removedFor(a), removedFor(b)));
   }
-  float alpha = max(aEdge.y * max(shownIn(aEdge.x), ${PREVIEW.toFixed(2)} * shownIn(aOuter)), max(edit, read * 0.55)) * (1.0 - gone);
+  float preview = max(${PREVIEW.toFixed(2)} * shownIn(aOuter), ${DEEP_PREVIEW.toFixed(2)} * shownIn(aDeep));
+  float alpha = max(aEdge.y * max(shownIn(aEdge.x), preview), max(edit, read * 0.55)) * (1.0 - gone);
   if (alpha < 0.012) {
     // Both vertices compute the same alpha, so the whole segment is clipped: no fragments.
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -177,6 +181,7 @@ export class EdgeLayer {
     const info = new Float32Array(segments.size * 8);
     const edge = new Float32Array(segments.size * 8);
     const outer = new Float32Array(segments.size * 2);
+    const deep = new Float32Array(segments.size * 2);
     const end = (id: number): [number, number, number, number] =>
       id < files
         ? [positions[id * 3], positions[id * 3 + 1], positions[id * 3 + 2], 0]
@@ -207,6 +212,8 @@ export class EdgeLayer {
       const kind = betweenFiles ? 0 : 1;
       edge.set([level, alpha, kind, neuron, level, alpha, kind, neuron], s * 8);
       outer.set([view.viewParent[level], view.viewParent[level]], s * 2);
+      const around = view.viewParent[level] < 0 ? -1 : view.viewParent[view.viewParent[level]];
+      deep.set([around, around], s * 2);
       if (!betweenFiles) bundles++;
       s++;
     }
@@ -217,6 +224,7 @@ export class EdgeLayer {
     geometry.setAttribute('aInfo', new THREE.BufferAttribute(info, 4));
     geometry.setAttribute('aEdge', new THREE.BufferAttribute(edge, 4));
     geometry.setAttribute('aOuter', new THREE.BufferAttribute(outer, 1));
+    geometry.setAttribute('aDeep', new THREE.BufferAttribute(deep, 1));
     this.lines = new THREE.LineSegments(
       geometry,
       new THREE.ShaderMaterial({

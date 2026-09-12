@@ -11,7 +11,9 @@ import { ENCODE_ID_GLSL, FOCUS_GLSL, type SharedUniforms } from './uniforms';
 // picking renders this same mesh with the PICK variant of its shaders swapped in.
 
 /** How strongly a directory's files show through its bubble, one level up, before the view zooms in. */
-const PREVIEW = 0.2;
+const PREVIEW = 0.6;
+/** And two levels up, inside a sub-directory bubble of the directory on screen. */
+const DEEP_PREVIEW = 0.3;
 
 const VERTEX = /* glsl */ `
 ${STATE_GLSL}
@@ -22,6 +24,7 @@ uniform float uSelectedAt;
 uniform float uViewportHeight;
 attribute float aDir;
 attribute float aOuter;
+attribute float aDeep;
 attribute vec3 aColor;
 varying vec2 vCorner;
 varying vec3 vColor;
@@ -45,8 +48,9 @@ void main() {
   float selected = abs(id - uSelected) < 0.5 ? 1.0 : 0.0;
   // A file being deleted stays in sight while it collapses.
   float lit = removed >= 0.0 ? 1.0 : max(max(read, edit), max(hovered, selected));
-  // Shown in its own directory, faintly through that directory's bubble one level up, and wherever Claude works on it.
-  float shown = max(max(shownIn(aDir), ${PREVIEW.toFixed(2)} * shownIn(aOuter)), lit);
+  // Shown in its own directory, through that directory's bubble one and two levels up, and wherever Claude works on it.
+  float preview = max(${PREVIEW.toFixed(2)} * shownIn(aOuter), ${DEEP_PREVIEW.toFixed(2)} * shownIn(aDeep));
+  float shown = max(max(shownIn(aDir), preview), lit);
 
 #ifdef PICK
   // Only the files of the directory on screen take clicks, and never one being deleted.
@@ -63,7 +67,7 @@ void main() {
   vec4 viewPosition = modelViewMatrix * vec4(center, 1.0);
   // Never let a file shrink below a few CSS px: however big the bubbles beside it, it can still be seen and clicked.
   float pixelsPerUnit = projectionMatrix[1][1] * uViewportHeight * 0.5 / max(-viewPosition.z, 1e-3);
-  scale = max(scale, mix(2.0, 4.5, shownIn(aDir)) / pixelsPerUnit);
+  scale = max(scale, mix(1.5, 4.5, shown) / pixelsPerUnit);
 
 #ifdef PICK
   float quad = 1.0;
@@ -172,6 +176,7 @@ export class NodeLayer {
     this.geometry.deleteAttribute('uv');
     this.geometry.setAttribute('aDir', new THREE.InstancedBufferAttribute(Float32Array.from(clusterOf), 1));
     this.geometry.setAttribute('aOuter', new THREE.InstancedBufferAttribute(Float32Array.from(clusterOf, (c) => viewParent[c]), 1));
+    this.geometry.setAttribute('aDeep', new THREE.InstancedBufferAttribute(Float32Array.from(clusterOf, (c) => (viewParent[c] < 0 ? -1 : viewParent[viewParent[c]])), 1));
     this.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
 
     const shaderUniforms = {

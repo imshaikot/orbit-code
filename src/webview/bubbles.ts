@@ -6,36 +6,51 @@ import { ENCODE_ID_GLSL, FOCUS_GLSL, PICK_CLUSTER_BASE, type SharedUniforms } fr
 // One bubble per directory: instanced camera-facing quads shaded as glass, a faint fill that thickens
 // toward a rim in the colour of the file type most of the directory is, unlike the solid files. While a
 // directory's contents are shown, its sub-directories are drawn as bubbles and the directory itself as a
-// faint frame around them. A bubble brightens while Claude works on files anywhere inside it.
+// faint frame around them. One level further down, their own sub-directories show through them as glass
+// outlines, and fainter one level below that, so the nesting reads while zoomed out. A bubble brightens while
+// Claude works on files anywhere inside it.
 
 /** aParent of a directory never drawn: a skipped one, or the root, whose contents fill the whole view anyway. */
 const SKIPPED = -2;
+/** How strongly a directory's sub-directories show through its bubble, one level up, before the view zooms in. */
+const PREVIEW = 0.9;
+/** And two levels up, inside a sub-directory bubble of the directory on screen. */
+const DEEP_PREVIEW = 0.45;
+/** However small a bubble is on screen, its rim stays at least this many CSS pixels wide. */
+const RIM_PX = 2.2;
 
 const VERTEX = /* glsl */ `
 ${STATE_GLSL}
 ${FOCUS_GLSL}
 uniform float uHoverCluster;
+uniform float uViewportHeight;
 attribute vec3 aColor;
 attribute float aActiveAt;
 attribute float aParent;
+attribute float aOuter;
+attribute float aDeep;
 varying vec2 vCorner;
 varying vec3 vColor;
 varying float vActive;
 varying float vHover;
 varying float vBody;
 varying float vFrame;
+varying float vPreview;
 varying float vNear;
+varying float vRimScale;
 flat varying float vId;
 
 void main() {
   float id = float(gl_InstanceID);
   float body = aParent < -0.5 ? 0.0 : shownIn(aParent);
   float frame = aParent < -1.5 ? 0.0 : shownIn(id);
+  // Shown inside its parent's bubble while the directory around that one is on screen, fainter one level further out.
+  float preview = max(aOuter < -0.5 ? 0.0 : ${PREVIEW.toFixed(2)} * shownIn(aOuter), aDeep < -0.5 ? 0.0 : ${DEEP_PREVIEW.toFixed(2)} * shownIn(aDeep));
 #ifdef PICK
   // Only the sub-directories of the directory on screen take clicks.
   if (aParent < -0.5 || isDir(aParent, shownDir()) < 0.5) {
 #else
-  if (body + frame < 0.01) {
+  if (body + frame + preview < 0.01) {
 #endif
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -45,6 +60,9 @@ void main() {
   vec4 viewPosition = modelViewMatrix * vec4(instanceMatrix[3].xyz, 1.0);
   // A bubble the camera is inside of, or almost, would wash over the whole view: fade it out.
   vNear = smoothstep(1.15, 2.4, -viewPosition.z / radius);
+  // The rim is a share of the radius, widened for a bubble small on screen so it never thins below RIM_PX.
+  float radiusPx = radius * projectionMatrix[1][1] * uViewportHeight * 0.5 / max(-viewPosition.z, 1e-3);
+  vRimScale = clamp(${RIM_PX.toFixed(2)} / (0.08 * radiusPx), 1.0, 5.0);
   viewPosition.xy += position.xy * radius;
   gl_Position = projectionMatrix * viewPosition;
 
@@ -53,6 +71,7 @@ void main() {
   vHover = abs(id - uHoverCluster) < 0.5 ? 1.0 : 0.0;
   vBody = body;
   vFrame = frame;
+  vPreview = preview;
   vCorner = position.xy;
   vColor = aColor;
   vId = id + ${PICK_CLUSTER_BASE}.0;
@@ -68,7 +87,9 @@ varying float vActive;
 varying float vHover;
 varying float vBody;
 varying float vFrame;
+varying float vPreview;
 varying float vNear;
+varying float vRimScale;
 flat varying float vId;
 
 void main() {
@@ -80,13 +101,17 @@ void main() {
 #else
   float z = sqrt(max(0.0, 1.0 - d * d));
   float fresnel = pow(1.0 - z, 2.2);
-  float rim = smoothstep(0.92, 0.982, d) * (1.0 - smoothstep(0.982, 1.0, d));
+  float peak = 1.0 - 0.018 * vRimScale;
+  float rim = smoothstep(1.0 - 0.08 * vRimScale, peak, d) * (1.0 - smoothstep(peak, 1.0, d));
   // A soft highlight toward the key light the files are lit from.
   float gloss = pow(max(dot(vec3(vCorner, z), vec3(-0.45, 0.6, 0.66)), 0.0), 48.0);
   vec3 color = mix(vColor, uReadColor, vActive * 0.7);
-  float body = (0.04 + 0.34 * fresnel + 0.5 * rim + 0.16 * gloss) * (1.0 + 0.9 * vHover) + (fresnel + rim) * vActive * 0.5;
+  float glow = (fresnel + rim) * vActive * 0.5;
+  float body = (0.04 + 0.34 * fresnel + 0.5 * rim + 0.16 * gloss) * (1.0 + 0.9 * vHover) + glow;
   float frame = rim * 0.2 + fresnel * 0.04;
-  gl_FragColor = vec4(color * (body * vBody + frame * vFrame) * vNear, 1.0);
+  // Mostly rim, with little fill, so the files and lines inside stay readable through it.
+  float preview = 0.03 + 0.2 * fresnel + 0.5 * rim + glow;
+  gl_FragColor = vec4(color * (body * vBody + frame * vFrame + preview * vPreview) * vNear, 1.0);
 #endif
 }
 `;
@@ -111,12 +136,18 @@ export class Bubbles {
     this.geometry.deleteAttribute('normal');
     this.geometry.deleteAttribute('uv');
     const parents = new Float32Array(count);
+    const outers = new Float32Array(count);
+    const deeps = new Float32Array(count);
     for (let c = 0; c < count; c++) {
       const p = view.viewParent[c];
       parents[c] = !view.shown[c] || p < 0 ? SKIPPED : p;
+      outers[c] = parents[c] < 0 ? -1 : view.viewParent[p];
+      deeps[c] = outers[c] < 0 ? -1 : view.viewParent[outers[c]];
     }
     this.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
     this.geometry.setAttribute('aParent', new THREE.InstancedBufferAttribute(parents, 1));
+    this.geometry.setAttribute('aOuter', new THREE.InstancedBufferAttribute(outers, 1));
+    this.geometry.setAttribute('aDeep', new THREE.InstancedBufferAttribute(deeps, 1));
     this.activeAt = new THREE.InstancedBufferAttribute(new Float32Array(count).fill(-1), 1);
     this.geometry.setAttribute('aActiveAt', this.activeAt);
 
