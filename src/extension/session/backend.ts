@@ -41,8 +41,11 @@ export interface AgentProcessSink {
 
 /** One running agent. It stays alive between turns; each `prompt` starts a turn. */
 export interface AgentProcess {
-  /** Starts a turn; `skills` (catalog names) are invoked with it, however the agent invokes skills. */
-  prompt(text: string, skills: readonly string[]): void;
+  /**
+   * Starts a turn; `skills` (catalog names) are invoked with it, however the agent invokes skills, and `files` (workspace
+   * ids, or absolute paths outside the workspace) go with it as context.
+   */
+  prompt(text: string, skills: readonly string[], files: readonly string[]): void;
   interrupt(): void;
   /**
    * Answers a `permissionRequest`. `always` allows and hands back the request's `suggestions` as the permissions to

@@ -45,7 +45,7 @@ export class SessionProjector {
   project(event: SessionEvent): void {
     switch (event.type) {
       case 'prompt':
-        this.append({ kind: 'prompt', text: clip(event.text), ...(event.skills?.length ? { skills: [...event.skills] } : {}) });
+        this.append({ kind: 'prompt', text: clip(event.text), ...(event.skills?.length ? { skills: [...event.skills] } : {}), ...(event.files?.length ? { files: [...event.files] } : {}) });
         break;
       case 'text':
         this.append({ kind: 'text', text: clip(event.text) });

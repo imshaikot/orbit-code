@@ -72,6 +72,8 @@ export type HostToWebview =
   | { type: 'transcript'; key: string; reset: boolean; entries: TranscriptEntry[] }
   | { type: 'catalog'; catalog: AgentCatalog }
   | { type: 'history'; history: HistorySnapshot }
+  /** Files the host's picker returned (answering `pickFiles`), to attach to the prompt: workspace ids, or absolute paths outside the workspace. */
+  | { type: 'attachFiles'; files: string[] }
   | { type: 'visibility'; visible: boolean }
   /** The answer to the `file` request with the same `id`; a followed file keeps sending `content` under that `id`. */
   | { type: 'file'; id: number; path: string; reply: FileReply };
@@ -306,8 +308,8 @@ export interface ConversationSummary {
 
 /** Append-only conversation log. The host keeps a bounded copy and resends it when the webview reloads. */
 export type TranscriptEntry =
-  /** `skills` were attached to the prompt and are invoked with it. */
-  | { id: number; kind: 'prompt'; text: string; skills?: string[] }
+  /** `skills` were attached to the prompt and are invoked with it; `files` went with it as context. */
+  | { id: number; kind: 'prompt'; text: string; skills?: string[]; files?: string[] }
   | { id: number; kind: 'text'; text: string }
   /**
    * `file` is the workspace-relative id of the file the tool touched, which the transcript links to: a graph
@@ -323,15 +325,18 @@ export type WebviewToHost =
   | { type: 'layoutComputed'; layout: LayoutSnapshot }
   | { type: 'reindex' }
   /**
-   * `skills`: names from the catalog, invoked with the prompt. `key`: the conversation to continue (refused while it is
+   * `skills`: names from the catalog, invoked with the prompt. `files`: context for it, graph file ids or paths the host's
+   * picker returned; the host drops any other. `key`: the conversation to continue (refused while it is
    * busy); without one, the current conversation takes it if idle, else a new conversation starts beside it.
    */
-  | { type: 'prompt'; text: string; skills?: string[]; key?: string }
+  | { type: 'prompt'; text: string; skills?: string[]; files?: string[]; key?: string }
   | { type: 'interrupt'; key: string }
   /** A fresh conversation becomes the one the drawer continues. */
   | { type: 'newSession' }
   | { type: 'refreshCatalog' }
   | { type: 'loadHistory' }
+  /** VS Code's open dialog, for files to attach to the prompt; answered by `attachFiles` unless it was cancelled. */
+  | { type: 'pickFiles' }
   /** An id from the last `history` message; the next prompt resumes that conversation. */
   | { type: 'resumeConversation'; id: string }
   | { type: 'sessionOptions'; options: Partial<SessionOptions> }

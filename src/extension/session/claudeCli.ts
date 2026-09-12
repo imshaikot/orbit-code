@@ -159,6 +159,16 @@ export function withSkills(text: string, skills: readonly string[]): string {
 }
 
 /**
+ * Files go as @-mentions, Claude Code's own way of attaching a file to a prompt; a path with whitespace is quoted
+ * (`@"a b.md"`). They follow the text, so a skill's slash command still leads.
+ */
+export function withFiles(text: string, files: readonly string[]): string {
+  if (files.length === 0) return text;
+  const mentions = files.map((file) => (/\s/.test(file) ? `@"${file}"` : `@${file}`)).join(' ');
+  return text ? `${text}\n\n${mentions}` : mentions;
+}
+
+/**
  * The extension host runs with ELECTRON_RUN_AS_NODE=1; left in place it would turn any Electron app Claude launches
  * from a Bash tool call into plain Node.
  */
@@ -190,8 +200,8 @@ class ClaudeCliProcess implements AgentProcess {
     child.on('close', (code, signal) => this.finish({ code, signal, stderr: this.stderr }));
   }
 
-  prompt(text: string, skills: readonly string[]): void {
-    this.write({ type: 'user', message: { role: 'user', content: withSkills(text, skills) } });
+  prompt(text: string, skills: readonly string[], files: readonly string[] = []): void {
+    this.write({ type: 'user', message: { role: 'user', content: withSkills(withFiles(text, files), skills) } });
   }
 
   interrupt(): void {

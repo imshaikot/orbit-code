@@ -131,11 +131,12 @@ export class SessionService implements vscode.Disposable {
 
   /**
    * Sends a prompt and returns the key of the conversation that took it, or undefined (empty, unavailable, or `key`
-   * names a conversation that is busy or gone). With `key` the prompt continues that conversation; without one, the
-   * current conversation takes it if idle, else a new conversation starts beside it. Either way that one becomes current.
+   * names a conversation that is busy or gone). `skills` are invoked with it and `files` go with it as context. With `key`
+   * the prompt continues that conversation; without one, the current conversation takes it if idle, else a new
+   * conversation starts beside it. Either way that one becomes current.
    */
-  prompt(text: string, skills: readonly string[] = [], key?: string): string | undefined {
-    if (!text.trim() && skills.length === 0) return undefined;
+  prompt(text: string, skills: readonly string[] = [], files: readonly string[] = [], key?: string): string | undefined {
+    if (!text.trim() && skills.length === 0 && files.length === 0) return undefined;
     const opened = key === undefined && this.current.busy ? this.open() : undefined;
     const conversation = opened ?? (key !== undefined ? this.find(key) : this.current);
     if (!conversation || conversation.state.phase !== 'idle') {
@@ -144,7 +145,7 @@ export class SessionService implements vscode.Disposable {
       return undefined;
     }
     this.makeCurrent(conversation);
-    conversation.prompt(text, skills);
+    conversation.prompt(text, skills, files);
     return conversation.key;
   }
 

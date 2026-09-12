@@ -11,8 +11,8 @@ export type TurnOutcome = 'done' | 'interrupted' | 'failed';
 
 /** Conversation-level events, independent of how the agent is run. */
 export type SessionEvent =
-  /** `skills`: invoked with the prompt, when any are attached. */
-  | { type: 'prompt'; text: string; skills?: string[] }
+  /** `skills`: invoked with the prompt, when any are attached; `files`: attached to it as context. */
+  | { type: 'prompt'; text: string; skills?: string[]; files?: string[] }
   | { type: 'thinking' }
   | { type: 'text'; text: string }
   | { type: 'toolUse'; name: string; input: Record<string, unknown> }
@@ -101,19 +101,19 @@ export class Conversation {
     return this.turns === 0 && this.sessionId === undefined && !this.busy;
   }
 
-  /** Returns false when the prompt was not accepted (empty, busy, or unavailable). `skills` are invoked with it. */
-  prompt(text: string, skills: readonly string[] = []): boolean {
+  /** Returns false when the prompt was not accepted (empty, busy, or unavailable). `skills` are invoked with it, `files` go with it as context. */
+  prompt(text: string, skills: readonly string[] = [], files: readonly string[] = []): boolean {
     const trimmed = text.trim();
     const cwd = this.context.cwd();
-    if ((!trimmed && skills.length === 0) || this.phase !== 'idle' || !cwd) return false;
+    if ((!trimmed && skills.length === 0 && files.length === 0) || this.phase !== 'idle' || !cwd) return false;
     const options = this.context.options();
     if (this.agent && !sameOptions(this.agentOptions, options)) this.stopAgent();
     const agent = this.agent ?? this.startAgent(cwd, options);
     this.phase = 'working';
     this.error = undefined;
     this.turnOpen = true;
-    this.sink.event(this, { type: 'prompt', text: trimmed, skills: [...skills] });
-    agent.prompt(trimmed, skills);
+    this.sink.event(this, { type: 'prompt', text: trimmed, skills: [...skills], ...(files.length > 0 ? { files: [...files] } : {}) });
+    agent.prompt(trimmed, skills, files);
     this.emitState();
     return true;
   }

@@ -13,6 +13,8 @@ import { SessionProjector } from './sessionProjector';
 
 /** Skills one prompt can carry. */
 const MAX_PROMPT_SKILLS = 8;
+/** Files one prompt can carry. */
+const MAX_PROMPT_FILES = 20;
 
 /**
  * Connects the services to the Orbit panel: forwards graph, session state and projected
@@ -29,6 +31,8 @@ export class OrbitController implements vscode.Disposable {
   /** The conversations last sent to the webview; a resume is accepted only for one of them. */
   private conversations: ConversationSummary[] = [];
   private historyGeneration = 0;
+  /** Paths the file picker returned: besides graph files, the only ones a prompt may attach. */
+  private readonly picked = new Set<string>();
   /** One projector per conversation, keyed like the sessions: each keeps its own transcript. */
   private readonly projectors = new Map<string, SessionProjector>();
   private readonly files: FileActions;
@@ -211,7 +215,7 @@ export class OrbitController implements vscode.Disposable {
         void this.graphs.load(true);
         break;
       case 'prompt':
-        if (typeof message.text === 'string') this.session.prompt(message.text, this.offeredSkills(message.skills), typeof message.key === 'string' ? message.key : undefined);
+        if (typeof message.text === 'string') this.session.prompt(message.text, this.offeredSkills(message.skills), this.attachableFiles(message.files), typeof message.key === 'string' ? message.key : undefined);
         break;
       case 'interrupt':
         if (typeof message.key === 'string') this.session.interrupt(message.key);
@@ -224,6 +228,9 @@ export class OrbitController implements vscode.Disposable {
         break;
       case 'loadHistory':
         void this.loadHistory();
+        break;
+      case 'pickFiles':
+        void this.pickFiles();
         break;
       case 'resumeConversation':
         this.resume(message.id);
@@ -251,6 +258,29 @@ export class OrbitController implements vscode.Disposable {
     if (!Array.isArray(names)) return [];
     const offered = new Set(this.session.catalog.skills.map((skill) => skill.name));
     return [...new Set(names.filter((name): name is string => typeof name === 'string' && offered.has(name)))].slice(0, MAX_PROMPT_SKILLS);
+  }
+
+  /** Only graph files, and files the picker returned, go with a prompt; anything else from the webview is dropped. */
+  private attachableFiles(paths: unknown): string[] {
+    if (!Array.isArray(paths)) return [];
+    const loaded = this.graphs.current;
+    const attachable = (path: unknown): path is string => typeof path === 'string' && (this.picked.has(path) || (isWorkspaceId(path) && loaded?.resolve(path) !== undefined));
+    return [...new Set(paths.filter(attachable))].slice(0, MAX_PROMPT_FILES);
+  }
+
+  /** VS Code's open dialog, in the first folder: a file inside the workspace is attached by its workspace-relative path, any other by its absolute one. */
+  private async pickFiles(): Promise<void> {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const uris = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, canSelectMany: true, defaultUri: folder?.uri, openLabel: 'Attach', title: 'Attach files to the prompt' });
+    const files = (uris ?? [])
+      .filter((uri) => uri.scheme === 'file')
+      .map((uri) => {
+        const rel = folder ? relative(folder.uri.fsPath, uri.fsPath) : '';
+        return rel && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel) ? rel.split(sep).join('/') : uri.fsPath;
+      });
+    if (files.length === 0) return;
+    for (const file of files) this.picked.add(file);
+    this.post({ type: 'attachFiles', files });
   }
 
   /** Earlier conversations of the first folder; the webview shows the last list while a new one is read. */
