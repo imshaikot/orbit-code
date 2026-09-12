@@ -4158,6 +4158,7 @@ __metadata:
   resolution: "orbit-code@workspace:apps/vscode"
   dependencies:
     "@orbit-code/agent": "workspace:*"
+    "@orbit-code/common": "workspace:*"
     "@orbit-code/core": "workspace:*"
     "@orbit-code/graph": "workspace:*"
     "@orbit-code/indexer": "workspace:*"

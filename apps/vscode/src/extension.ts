@@ -2,11 +2,12 @@ import { ClaudeCliBackend } from '@orbit-code/agent/claudeCli';
 import { ConversationHistory } from '@orbit-code/agent/history';
 import { SessionService } from '@orbit-code/agent/sessionService';
 import { GraphService } from '@orbit-code/core/graphService';
+import { applySettings } from '@orbit-code/core/settings';
 import type { FileReply, FileRequest } from '@orbit-code/protocol';
 import * as vscode from 'vscode';
 import { ActivityBarLauncher } from './activityBar';
-import { type OrbitSettings, onSettingsChanged, readSettings } from './config';
-import { OrbitController } from './controller';
+import { onSettingsChanged, readSettings } from './config';
+import { PanelController, firstFolder } from './controller';
 import { listWorkspaceFiles } from './graph/files';
 import { WorkspaceWatcher } from './graph/watcher';
 import { SessionStatusBar } from './statusBar';
@@ -27,10 +28,7 @@ export function activate(context: vscode.ExtensionContext): OrbitApi {
     indexerPath: vscode.Uri.joinPath(context.extensionUri, 'dist', 'indexer.mjs').fsPath,
     log,
     maxFiles: () => settings.maxFiles,
-    folder: () => {
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      return folder && { name: folder.name, path: folder.uri.fsPath };
-    },
+    folder: firstFolder,
     listFiles: listWorkspaceFiles,
   });
   const session = new SessionService(
@@ -39,7 +37,7 @@ export function activate(context: vscode.ExtensionContext): OrbitApi {
     { model: settings.claude.model, effort: settings.claude.effort, permissionMode: settings.claude.permissionMode },
     () => ({ cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, trusted: vscode.workspace.isTrusted }),
   );
-  const controller = new OrbitController(context.extensionUri, log, graphs, session, new ConversationHistory());
+  const controller = new PanelController(context.extensionUri, log, graphs, session, new ConversationHistory());
   // Keeps the loaded graph current, with or without the panel; a finished turn flushes at once.
   const watcher = new WorkspaceWatcher((changes) => graphs.refresh(changes));
 
@@ -73,16 +71,7 @@ export function activate(context: vscode.ExtensionContext): OrbitApi {
     if (process.env.ORBIT_REINDEX === '1') void graphs.load(true);
   }
 
-  return { fileRequest: (path, request) => controller.fileRequest(0, path, request) };
+  return { fileRequest: (path, request) => controller.fileRequest(path, request) };
 }
 
 export function deactivate(): void {}
-
-function applySettings(previous: OrbitSettings, next: OrbitSettings, session: SessionService): void {
-  const { claude: before } = previous;
-  const { claude: after } = next;
-  if (after.path !== before.path || after.extraArgs.join('\0') !== before.extraArgs.join('\0')) void session.refresh();
-  if (after.model !== before.model || after.effort !== before.effort || after.permissionMode !== before.permissionMode) {
-    session.setOptions({ model: after.model, effort: after.effort, permissionMode: after.permissionMode });
-  }
-}

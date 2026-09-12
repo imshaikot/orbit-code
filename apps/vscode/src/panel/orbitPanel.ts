@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { Emitter } from '@orbit-code/common/event';
+import type { WebviewTransport } from '@orbit-code/core/controller';
 import type { HostToWebview, WebviewToHost } from '@orbit-code/protocol';
 import * as vscode from 'vscode';
 
@@ -9,10 +11,10 @@ import * as vscode from 'vscode';
  * Nothing is buffered before the webview posts `ready`: `onReady` fires on the
  * first load and on every reload, and the owner answers with a full snapshot.
  */
-export class OrbitPanel implements vscode.Disposable {
-  private readonly readyEmitter = new vscode.EventEmitter<void>();
-  private readonly messageEmitter = new vscode.EventEmitter<WebviewToHost>();
-  private readonly disposeEmitter = new vscode.EventEmitter<void>();
+export class OrbitPanel implements WebviewTransport, vscode.Disposable {
+  private readonly readyEmitter = new Emitter<void>();
+  private readonly messageEmitter = new Emitter<WebviewToHost>();
+  private readonly disposeEmitter = new Emitter<void>();
   readonly onReady = this.readyEmitter.event;
   readonly onMessage = this.messageEmitter.event;
   readonly onDidDispose = this.disposeEmitter.event;
@@ -50,7 +52,8 @@ export class OrbitPanel implements vscode.Disposable {
     return new OrbitPanel(panel, extensionUri);
   }
 
-  get visible(): boolean {
+  /** The panel is showing; a hidden panel's permission requests become notifications. */
+  get inSight(): boolean {
     return this.panel.visible;
   }
 
