@@ -18,7 +18,7 @@ env:
 
 jobs:
   check:
-    name: Typecheck, build, index
+    name: Typecheck, build, boundaries, index
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -38,6 +38,7 @@ jobs:
       - run: yarn typecheck
       # The webview's build also runs its constraint check (packages/webview/build.mjs).
       - run: yarn build
+      - run: yarn boundaries
       # Catches a dependency-cruiser upgrade whose shims no longer match, without starting VS Code.
       - name: Index this repository
         run: |

@@ -12,6 +12,7 @@
     "build": "nx run-many -t build",
     "watch": "nx run vscode:watch",
     "typecheck": "nx run-many -t typecheck",
+    "boundaries": "node tools/scripts/check-boundaries.mjs",
     "self": "node apps/vscode/scripts/run-self.mjs",
     "install-local": "node apps/vscode/scripts/install-local.mjs",
     "package": "nx run vscode:package",
