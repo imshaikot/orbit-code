@@ -29,7 +29,7 @@ yarn install-local
 
 Reload VS Code, then click the Orbit icon in the activity bar or run **Orbit Code: Open**.
 
-**Navigating:** scroll over a bubble to zoom into it, click a bubble to enter it, and press Esc to go back up.
+**Navigating:** scroll over a bubble to zoom into it (it comes to the middle of the screen and opens once it fills the view), click a bubble to enter it, drag to orbit, right-drag to pan (panning out of a directory backs out of it), and press Esc to go back up. The directories beside the one you are in stay as faint rims.
 
 ## Commands
 
