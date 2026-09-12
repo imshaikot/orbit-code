@@ -8,7 +8,7 @@ Directories are bubbles, files are nodes, imports are lines. Files Claude reads 
 
 - **Dependency graph for most languages.** JS/TS, Python, Go, Rust, Java, C#, Swift, PHP, Dart and more. Imports resolve through each project's own config (`tsconfig`, `go.mod`, `Cargo.toml`, `pyproject.toml`, …), so monorepos work too.
 - **Live updates.** The graph follows your edits, Claude's edits and git checkouts within seconds, and keeps the layout in place.
-- **Claude in the panel.** Prompt from the bottom drawer, pick model, effort and permission mode, and run several conversations at once.
+- **Claude in the panel.** Prompt from the bottom drawer, pick model, effort and permission mode, and run several conversations at once. A conversation's own window has the same controls, so a follow-up can switch model or bring skills and files, and you can write it while Claude is still working.
 - **Permissions.** Allow, Deny or "don't ask again" from a card in the panel, or from a notification when Orbit is hidden. When Claude asks you questions, pick its options or type your own answer on the same card, or skip them.
 - **Context.** Attach skills (type `/` or drag them in), attach files, or continue an earlier conversation.
 - **MCP servers.** The MCP button at the top right of the drawer shows every MCP server Claude Code loads, and whether it is connected, needs sign-in, failed or is disabled. Reload them, or sign in, reconnect, enable or disable one; the change is saved in your Claude Code settings, as `/mcp` saves it.
@@ -29,7 +29,7 @@ yarn install-local
 
 Reload VS Code, then click the Orbit icon in the activity bar or run **Orbit Code: Open**.
 
-**Navigating:** scroll over a bubble to zoom into it (it comes to the middle of the screen and opens once it fills the view), click a bubble to enter it, drag to orbit, right-drag to pan (panning out of a directory backs out of it), and press Esc to go back up. The directories beside the one you are in stay as faint rims.
+**Navigating:** scroll over a bubble to zoom into it (it comes to the middle of the screen and opens once it fills the view), click a bubble to enter it, drag to orbit all the way around, right-drag to pan (panning out of a directory backs out of it), and press Esc to go back up. The directories beside the one you are in stay as faint rims.
 
 ## Commands
 
