@@ -1,0 +1,15 @@
+{
+  "name": "@orbit-code/graph",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Orbit's graph model: which files are nodes and of what kind, the columnar graph, the directory tree and its spacing, and extending a frozen layout after a live update.",
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    "./*": "./src/*.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@orbit-code/protocol": "workspace:*"
+  }
+}

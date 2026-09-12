@@ -1,0 +1,19 @@
+{
+  "name": "@orbit-code/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The editor-agnostic Orbit host: the workspace graph (cache, indexing on a worker, live updates, frozen layouts), batched file changes, and Claude's activity projected onto the graph. An editor supplies folders, file listing, file events and storage.",
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    "./*": "./src/*.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@orbit-code/agent": "workspace:*",
+    "@orbit-code/common": "workspace:*",
+    "@orbit-code/graph": "workspace:*",
+    "@orbit-code/indexer": "workspace:*",
+    "@orbit-code/protocol": "workspace:*"
+  }
+}

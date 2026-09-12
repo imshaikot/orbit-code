@@ -15,7 +15,6 @@ permissions:
 
 env:
   NODE_VERSION: 22
-  VSCE: '@vscode/vsce@3.9.2'
 
 jobs:
   check:
@@ -30,8 +29,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
       - run: yarn install --immutable
+      # Nx's local task cache; the jobs below restore what this one built.
+      - uses: actions/cache@v6
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: nx-${{ runner.os }}-
       - run: yarn typecheck
-      # Also runs checkConstraints() in esbuild.mjs.
+      # The webview's build also runs its constraint check (packages/webview/build.mjs).
       - run: yarn build
       # Catches a dependency-cruiser upgrade whose shims no longer match, without starting VS Code.
       - name: Index this repository
@@ -42,7 +47,7 @@ jobs:
             console.log(`${stats.files} files, ${stats.edges} edges (dependency-cruiser ${stats.depcruiseFiles}, regex ${stats.regexFiles})`);
             if (stats.files < 40 || stats.edges < 40) throw new Error("graph is too small");
             if (!stats.depcruiseFiles) throw new Error("dependency-cruiser indexed no files");
-            if (!nodes.some((node) => node.id === "src/webview/main.ts")) throw new Error("src/webview/main.ts is missing");
+            if (!nodes.some((node) => node.id === "packages/webview/src/main.ts")) throw new Error("packages/webview/src/main.ts is missing");
           ' "$RUNNER_TEMP/graph.json"
 
   package:
@@ -58,13 +63,17 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
       - run: yarn install --immutable
-      - run: node esbuild.mjs --production
-      # The same vsce arguments as scripts/install-local.mjs.
-      - run: yarn dlx --quiet "$VSCE" package --no-dependencies --allow-missing-repository --no-rewrite-relative-links --out orbit-code.vsix
+      - uses: actions/cache/restore@v6
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: nx-${{ runner.os }}-
+      # The production build, then vsce through apps/vscode/scripts/package.mjs.
+      - run: yarn package
       - uses: actions/upload-artifact@v7
         with:
           name: orbit-code-vsix
-          path: orbit-code.vsix
+          path: dist/apps/vscode/*.vsix
           if-no-files-found: error
 
   smoke:
@@ -80,6 +89,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
       - run: yarn install --immutable
+      - uses: actions/cache/restore@v6
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: nx-${{ runner.os }}-
       # Ubuntu 24.04 blocks the unprivileged user namespaces Electron's sandbox needs.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Cache VS Code
@@ -111,6 +125,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
       - run: yarn install --immutable
+      - uses: actions/cache/restore@v6
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: nx-${{ runner.os }}-
       # The harness only throws if the scene never loads; read report.json in the artifact for the checks.
       - run: yarn harness --chrome "$(command -v google-chrome)"
       - name: Upload report and screenshots

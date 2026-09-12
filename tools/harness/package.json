@@ -1,0 +1,16 @@
+{
+  "name": "@orbit-code/harness",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Drives the built webview in headless Chrome against a simulated host (src/hostSim.ts), under the real webview CSP.",
+  "license": "MIT",
+  "dependencies": {
+    "@orbit-code/common": "workspace:*",
+    "@orbit-code/graph": "workspace:*",
+    "@orbit-code/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@orbit-code/indexer": "workspace:*",
+    "@orbit-code/webview": "workspace:*"
+  }
+}

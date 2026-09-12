@@ -1,0 +1,40 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "vscode",
+  "projectType": "application",
+  "sourceRoot": "apps/vscode/src",
+  "tags": ["type:app", "runtime:vscode", "publish:vscode"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "node build.mjs", "cwd": "{projectRoot}" },
+      "configurations": { "production": { "command": "node build.mjs --production" } },
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "watch": {
+      "continuous": true,
+      "dependsOn": ["^watch"],
+      "executor": "nx:run-commands",
+      "options": { "command": "node build.mjs --watch", "cwd": "{projectRoot}" }
+    },
+    "typecheck": {},
+    "package": {
+      "executor": "nx:run-commands",
+      "options": { "command": "nx run vscode:build:production && node apps/vscode/scripts/package.mjs" },
+      "inputs": ["production", "^production"],
+      "outputs": ["{workspaceRoot}/dist/apps/vscode"],
+      "cache": true
+    },
+    "smoke": {
+      "dependsOn": ["build"],
+      "executor": "nx:run-commands",
+      "options": { "command": "node test/smoke.mjs", "cwd": "{projectRoot}" },
+      "cache": false
+    },
+    "nx-release-publish": {
+      "dependsOn": ["package"],
+      "executor": "nx:run-commands",
+      "options": { "command": "node scripts/publish.mjs", "cwd": "{projectRoot}" }
+    }
+  }
+}

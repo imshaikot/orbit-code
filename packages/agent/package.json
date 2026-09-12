@@ -1,0 +1,16 @@
+{
+  "name": "@orbit-code/agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Claude Code conversations for any host: the claude CLI over stream-json, permissions and questions, interrupts, resume, the skill and MCP catalog, and earlier conversations. Knows nothing about graphs or editors.",
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    "./*": "./src/*.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@orbit-code/common": "workspace:*",
+    "@orbit-code/protocol": "workspace:*"
+  }
+}

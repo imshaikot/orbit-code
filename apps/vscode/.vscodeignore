@@ -1,0 +1,11 @@
+# A whitelist: the .vsix holds the manifest, README, LICENSE, CHANGELOG, the icon and the three bundles in dist/, and
+# nothing else from apps/vscode (sources, scripts, tests, source maps, Nx and TypeScript config).
+**
+!package.json
+!README.md
+!LICENSE
+!CHANGELOG.md
+!media/**
+!dist/extension.js
+!dist/indexer.mjs
+!dist/webview.js

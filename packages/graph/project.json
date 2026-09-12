@@ -1,0 +1,10 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "graph",
+  "projectType": "library",
+  "sourceRoot": "packages/graph/src",
+  "tags": ["type:lib", "runtime:neutral"],
+  "targets": {
+    "typecheck": {}
+  }
+}

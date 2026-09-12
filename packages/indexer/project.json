@@ -1,0 +1,25 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "indexer",
+  "projectType": "library",
+  "sourceRoot": "packages/indexer/src",
+  "tags": ["type:lib", "runtime:node", "publish:npm"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "node build.mjs", "cwd": "{projectRoot}" },
+      "configurations": { "production": { "command": "node build.mjs --production" } },
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "watch": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "options": { "command": "node build.mjs --watch", "cwd": "{projectRoot}" }
+    },
+    "typecheck": {},
+    "nx-release-publish": {
+      "executor": "@nx/js:release-publish",
+      "options": { "packageRoot": "{projectRoot}/dist" }
+    }
+  }
+}

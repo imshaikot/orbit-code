@@ -1,21 +1,29 @@
 name: Release
 
+# `yarn nx release` versions what the version plans name, writes each project's CHANGELOG.md, commits, and tags each
+# release with its group's pattern (nx.json): v<version> for the VS Code extension, <project>-v<version> for an npm
+# package. Pushing a tag runs the matching job.
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', '*-v*']
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   NODE_VERSION: 22
-  VSCE: '@vscode/vsce@3.9.2'
 
 jobs:
-  release:
-    name: Build and publish the .vsix to a GitHub release
+  vscode:
+    name: Package the extension, attach it to a GitHub release, publish it
+    if: startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v7
       - run: corepack enable
@@ -24,18 +32,57 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
       - run: yarn install --immutable
-      - name: Check the tag matches package.json
+      - name: Check the tag matches apps/vscode/package.json
         run: |
-          version=$(node -p 'require("./package.json").version')
+          version=$(node -p 'require("./apps/vscode/package.json").version')
           if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            echo "::error::tag $GITHUB_REF_NAME does not match apps/vscode/package.json version $version"
             exit 1
           fi
       - run: yarn typecheck
-      - run: node esbuild.mjs --production
-      - name: Package
-        run: yarn dlx --quiet "$VSCE" package --no-dependencies --allow-missing-repository --no-rewrite-relative-links --out "orbit-code-${GITHUB_REF_NAME#v}.vsix"
+      - run: yarn package
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" orbit-code-*.vsix --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" dist/apps/vscode/*.vsix --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+      # The Visual Studio Marketplace with VSCE_PAT, Open VSX (VSCodium, Cursor, Windsurf, …) with OVSX_PAT; each is skipped without its secret.
+      - name: Publish to the Marketplace and Open VSX
+        if: env.VSCE_PAT != '' || env.OVSX_PAT != ''
+        run: node apps/vscode/scripts/publish.mjs
+
+  npm:
+    name: Publish an npm package
+    if: contains(github.ref_name, '-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+          registry-url: https://registry.npmjs.org
+      - run: yarn install --immutable
+      - name: Check the tag matches the project's version
+        id: project
+        run: |
+          project="${GITHUB_REF_NAME%-v*}"
+          version="${GITHUB_REF_NAME##*-v}"
+          root=$(yarn nx show project "$project" --json | jq -r .root)
+          actual=$(node -p "require('./$root/package.json').version")
+          if [ "$actual" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match $root/package.json version $actual"
+            exit 1
+          fi
+          echo "name=$project" >> "$GITHUB_OUTPUT"
+      - run: yarn typecheck
+      - run: yarn nx run ${{ steps.project.outputs.name }}:build:production
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
+        run: yarn nx release publish --projects=${{ steps.project.outputs.name }}

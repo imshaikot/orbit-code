@@ -3,8 +3,8 @@
   "tasks": [
     {
       "label": "orbit: build",
-      "type": "npm",
-      "script": "build",
+      "type": "shell",
+      "command": "yarn nx run vscode:build",
       "problemMatcher": "$esbuild"
     }
   ]

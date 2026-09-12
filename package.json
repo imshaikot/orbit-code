@@ -1,201 +1,30 @@
 {
-  "name": "orbit-code",
-  "displayName": "Orbit Code",
-  "description": "Your codebase as a 3D dependency graph, with a live Claude Code session moving through it.",
-  "version": "0.2.0",
-  "publisher": "local",
+  "name": "@orbit-code/source",
+  "version": "0.0.0",
   "private": true,
-  "author": "Shahriar M Abu Hena",
   "license": "MIT",
-  "engines": {
-    "vscode": "^1.100.0"
-  },
-  "categories": [
-    "Visualization",
-    "AI"
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
   ],
-  "main": "./dist/extension.js",
-  "activationEvents": [
-    "onStartupFinished"
-  ],
-  "capabilities": {
-    "untrustedWorkspaces": {
-      "supported": "limited",
-      "description": "The graph works in untrusted workspaces. Claude sessions start only once the workspace is trusted.",
-      "restrictedConfigurations": [
-        "orbit.claude.path",
-        "orbit.claude.extraArgs",
-        "orbit.claude.permissionMode"
-      ]
-    }
-  },
-  "contributes": {
-    "commands": [
-      {
-        "command": "orbit.open",
-        "title": "Open",
-        "category": "Orbit Code"
-      },
-      {
-        "command": "orbit.prompt",
-        "title": "Ask Claude…",
-        "category": "Orbit Code"
-      },
-      {
-        "command": "orbit.interrupt",
-        "title": "Stop Claude",
-        "category": "Orbit Code"
-      },
-      {
-        "command": "orbit.newSession",
-        "title": "New Claude Conversation",
-        "category": "Orbit Code"
-      },
-      {
-        "command": "orbit.reindex",
-        "title": "Reindex Workspace",
-        "category": "Orbit Code"
-      }
-    ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "orbit",
-          "title": "Orbit Code",
-          "icon": "media/orbit.svg"
-        }
-      ]
-    },
-    "views": {
-      "orbit": [
-        {
-          "id": "orbit.launcher",
-          "name": "Orbit Code"
-        }
-      ]
-    },
-    "viewsWelcome": [
-      {
-        "view": "orbit.launcher",
-        "contents": "Orbit Code opens in the editor area and collapses the side bar.\n[Open Orbit Code](command:orbit.open)"
-      }
-    ],
-    "configuration": {
-      "title": "Orbit Code",
-      "properties": {
-        "orbit.maxFiles": {
-          "type": "number",
-          "default": 20000,
-          "minimum": 100,
-          "description": "Maximum number of source files to index. Larger workspaces are truncated."
-        },
-        "orbit.claude.path": {
-          "type": "string",
-          "default": "",
-          "scope": "machine",
-          "markdownDescription": "Path to the `claude` executable. Empty searches `PATH` and the default install locations."
-        },
-        "orbit.claude.model": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Model alias or id passed to Claude Code as `--model`, for example `opus` or `sonnet`. Empty uses Claude Code's own default. The picker in the Orbit Code panel overrides this until the window reloads."
-        },
-        "orbit.claude.effort": {
-          "type": "string",
-          "enum": [
-            "",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max"
-          ],
-          "enumDescriptions": [
-            "Claude Code's own default, from your settings.",
-            "Quick answers with the least thinking.",
-            "A balance of speed and depth.",
-            "Thinks problems through.",
-            "Deeper reasoning for hard problems.",
-            "The deepest reasoning: slowest, and the most tokens."
-          ],
-          "default": "",
-          "markdownDescription": "Effort level passed to Claude Code as `--effort`: how much Claude thinks before answering. Empty uses Claude Code's own default. A model that takes no effort level, such as Haiku, ignores it. The effort meter in the Orbit Code panel overrides this until the window reloads."
-        },
-        "orbit.claude.permissionMode": {
-          "type": "string",
-          "enum": [
-            "default",
-            "acceptEdits",
-            "plan",
-            "bypassPermissions"
-          ],
-          "enumDescriptions": [
-            "Your Claude Code settings decide; anything that needs approval is asked in the Orbit Code panel.",
-            "File edits are accepted without asking; other gated tools are still asked.",
-            "Claude plans and reads but does not change anything.",
-            "Every tool runs without asking. Only for sandboxed environments."
-          ],
-          "default": "default",
-          "scope": "machine",
-          "description": "Permission mode for new Claude sessions. Bypass can only be chosen here, never from the panel."
-        },
-        "orbit.claude.extraArgs": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "scope": "machine",
-          "markdownDescription": "Extra arguments appended to every `claude` invocation, for example `[\"--add-dir\", \"../shared\"]`."
-        }
-      }
-    }
-  },
   "scripts": {
-    "build": "node esbuild.mjs",
-    "watch": "node esbuild.mjs --watch",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit",
-    "self": "node scripts/run-self.mjs",
-    "install-local": "node scripts/install-local.mjs",
-    "index": "node dist/indexer.mjs",
-    "harness": "node scripts/harness.mjs",
-    "smoke": "node scripts/smoke.mjs"
-  },
-  "dependencies": {
-    "@codemirror/autocomplete": "6.20.3",
-    "@codemirror/commands": "6.11.0",
-    "@codemirror/lang-cpp": "6.0.3",
-    "@codemirror/lang-css": "6.3.1",
-    "@codemirror/lang-go": "6.0.1",
-    "@codemirror/lang-html": "6.4.12",
-    "@codemirror/lang-java": "6.0.2",
-    "@codemirror/lang-javascript": "6.2.5",
-    "@codemirror/lang-json": "6.0.2",
-    "@codemirror/lang-markdown": "6.5.2",
-    "@codemirror/lang-php": "6.0.2",
-    "@codemirror/lang-python": "6.2.1",
-    "@codemirror/lang-rust": "6.0.2",
-    "@codemirror/lang-sql": "6.10.0",
-    "@codemirror/lang-xml": "6.1.0",
-    "@codemirror/lang-yaml": "6.1.3",
-    "@codemirror/language": "6.12.4",
-    "@codemirror/legacy-modes": "6.5.4",
-    "@codemirror/merge": "6.12.2",
-    "@codemirror/search": "6.7.2",
-    "@codemirror/state": "6.7.4",
-    "@codemirror/view": "6.43.11",
-    "@lezer/highlight": "1.2.3",
-    "d3-force-3d": "3.0.6",
-    "dependency-cruiser": "18.2.0",
-    "three": "0.186.0",
-    "typescript": "5.9.3"
+    "build": "nx run-many -t build",
+    "watch": "nx run vscode:watch",
+    "typecheck": "nx run-many -t typecheck",
+    "self": "node apps/vscode/scripts/run-self.mjs",
+    "install-local": "node apps/vscode/scripts/install-local.mjs",
+    "package": "nx run vscode:package",
+    "index": "node packages/indexer/dist/indexer.mjs",
+    "harness": "nx run harness:e2e --",
+    "smoke": "nx run vscode:smoke"
   },
   "devDependencies": {
+    "@nx/js": "23.2.1",
     "@types/node": "^22.10.0",
-    "@types/three": "0.185.4",
-    "@types/vscode": "~1.100.0",
-    "@vscode/test-electron": "^3.1.0",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "nx": "23.2.1",
+    "typescript": "5.9.3"
   },
   "packageManager": "yarn@4.9.4"
 }

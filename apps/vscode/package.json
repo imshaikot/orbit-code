@@ -1,0 +1,166 @@
+{
+  "name": "orbit-code",
+  "displayName": "Orbit Code",
+  "description": "Your codebase as a 3D dependency graph, with a live Claude Code session moving through it.",
+  "version": "0.2.0",
+  "publisher": "local",
+  "private": true,
+  "author": "Shahriar M Abu Hena",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Visualization",
+    "AI"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "The graph works in untrusted workspaces. Claude sessions start only once the workspace is trusted.",
+      "restrictedConfigurations": [
+        "orbit.claude.path",
+        "orbit.claude.extraArgs",
+        "orbit.claude.permissionMode"
+      ]
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "orbit.open",
+        "title": "Open",
+        "category": "Orbit Code"
+      },
+      {
+        "command": "orbit.prompt",
+        "title": "Ask Claude…",
+        "category": "Orbit Code"
+      },
+      {
+        "command": "orbit.interrupt",
+        "title": "Stop Claude",
+        "category": "Orbit Code"
+      },
+      {
+        "command": "orbit.newSession",
+        "title": "New Claude Conversation",
+        "category": "Orbit Code"
+      },
+      {
+        "command": "orbit.reindex",
+        "title": "Reindex Workspace",
+        "category": "Orbit Code"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "orbit",
+          "title": "Orbit Code",
+          "icon": "media/orbit.svg"
+        }
+      ]
+    },
+    "views": {
+      "orbit": [
+        {
+          "id": "orbit.launcher",
+          "name": "Orbit Code"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "orbit.launcher",
+        "contents": "Orbit Code opens in the editor area and collapses the side bar.\n[Open Orbit Code](command:orbit.open)"
+      }
+    ],
+    "configuration": {
+      "title": "Orbit Code",
+      "properties": {
+        "orbit.maxFiles": {
+          "type": "number",
+          "default": 20000,
+          "minimum": 100,
+          "description": "Maximum number of source files to index. Larger workspaces are truncated."
+        },
+        "orbit.claude.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Path to the `claude` executable. Empty searches `PATH` and the default install locations."
+        },
+        "orbit.claude.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model alias or id passed to Claude Code as `--model`, for example `opus` or `sonnet`. Empty uses Claude Code's own default. The picker in the Orbit Code panel overrides this until the window reloads."
+        },
+        "orbit.claude.effort": {
+          "type": "string",
+          "enum": [
+            "",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "enumDescriptions": [
+            "Claude Code's own default, from your settings.",
+            "Quick answers with the least thinking.",
+            "A balance of speed and depth.",
+            "Thinks problems through.",
+            "Deeper reasoning for hard problems.",
+            "The deepest reasoning: slowest, and the most tokens."
+          ],
+          "default": "",
+          "markdownDescription": "Effort level passed to Claude Code as `--effort`: how much Claude thinks before answering. Empty uses Claude Code's own default. A model that takes no effort level, such as Haiku, ignores it. The effort meter in the Orbit Code panel overrides this until the window reloads."
+        },
+        "orbit.claude.permissionMode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "acceptEdits",
+            "plan",
+            "bypassPermissions"
+          ],
+          "enumDescriptions": [
+            "Your Claude Code settings decide; anything that needs approval is asked in the Orbit Code panel.",
+            "File edits are accepted without asking; other gated tools are still asked.",
+            "Claude plans and reads but does not change anything.",
+            "Every tool runs without asking. Only for sandboxed environments."
+          ],
+          "default": "default",
+          "scope": "machine",
+          "description": "Permission mode for new Claude sessions. Bypass can only be chosen here, never from the panel."
+        },
+        "orbit.claude.extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine",
+          "markdownDescription": "Extra arguments appended to every `claude` invocation, for example `[\"--add-dir\", \"../shared\"]`."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@orbit-code/agent": "workspace:*",
+    "@orbit-code/core": "workspace:*",
+    "@orbit-code/graph": "workspace:*",
+    "@orbit-code/indexer": "workspace:*",
+    "@orbit-code/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@orbit-code/webview": "workspace:*",
+    "@types/vscode": "~1.100.0",
+    "@vscode/test-electron": "^3.1.0"
+  }
+}

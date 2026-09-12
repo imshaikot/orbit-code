@@ -1,0 +1,13 @@
+{
+  "name": "@orbit-code/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Every message that crosses an Orbit boundary (host and webview, host and indexer worker, webview and layout worker), plus the workspace path and MCP tool name rules both sides apply.",
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/protocol.ts",
+    "./*": "./src/*.ts",
+    "./package.json": "./package.json"
+  }
+}

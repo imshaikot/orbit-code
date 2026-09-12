@@ -1,0 +1,10 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "agent",
+  "projectType": "library",
+  "sourceRoot": "packages/agent/src",
+  "tags": ["type:lib", "runtime:node"],
+  "targets": {
+    "typecheck": {}
+  }
+}

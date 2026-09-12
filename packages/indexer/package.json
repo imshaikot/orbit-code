@@ -1,0 +1,30 @@
+{
+  "name": "@orbit-code/indexer",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Indexes a workspace into Orbit's dependency graph: dependency-cruiser for JS/TS, manifest-aware import scans for other languages. Runs as a worker thread or as the orbit-index CLI.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imshaikot/orbit-code.git",
+    "directory": "packages/indexer"
+  },
+  "keywords": [
+    "dependency-graph",
+    "dependency-cruiser",
+    "imports",
+    "monorepo",
+    "orbit"
+  ],
+  "exports": {
+    "./listFiles": "./src/listFiles.ts",
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@orbit-code/graph": "workspace:*",
+    "@orbit-code/protocol": "workspace:*",
+    "dependency-cruiser": "18.2.0",
+    "typescript": "5.9.3"
+  }
+}

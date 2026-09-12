@@ -1,0 +1,12 @@
+{
+  "name": "@orbit-code/common",
+  "version": "0.0.0",
+  "private": true,
+  "description": "What Orbit's services need from a host without naming one: events, disposables, a logger, and a batcher that hands items over once per tick.",
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    "./*": "./src/*.ts",
+    "./package.json": "./package.json"
+  }
+}
