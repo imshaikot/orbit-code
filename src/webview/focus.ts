@@ -11,6 +11,14 @@ const DURATION_MS = 600;
  */
 const REVEAL_START = 0.25;
 const REVEAL_END = 0.9;
+/**
+ * A bubble counts as looked into while the middle of the screen is inside it: fully while the centre ray passes
+ * within this share of its radius, fading to nothing at its rim, so panning out of a directory eases back out of it.
+ */
+const CENTRAL_START = 0.75;
+/** A camera inside a bubble, or nearly, is looking into it whichever way it turns. */
+const INSIDE_START = 0.9;
+const INSIDE_END = 1.1;
 
 export interface Sphere {
   center: THREE.Vector3;
@@ -33,11 +41,15 @@ interface Tween {
   to: number;
 }
 
+const forward = new THREE.Vector3();
+const toCenter = new THREE.Vector3();
+
 /**
- * Which directory's contents are on screen, decided by the camera. Zooming toward a sub-directory bubble (the one
- * around the orbit target) fades its contents in with the zoom, and far enough in it opens; zooming back out fades
- * them out again and backs out to the parent. uFocusFrom and uFocus name the outer and inner directory of that
- * crossfade, uFocusMix how far it has gone. Clicks, Esc and the breadcrumb only move the camera.
+ * Which directory's contents are on screen, decided by the camera alone. Zooming in on a sub-directory bubble (the one
+ * the middle of the screen looks into) fades its contents in with the zoom, and far enough in it opens; zooming back
+ * out fades them out again and backs out to the parent, and so does panning until the middle of the screen leaves
+ * it. uFocusFrom and uFocus name the outer and inner directory of that crossfade, uFocusMix how far it has gone.
+ * Clicks, Esc and the breadcrumb only move the camera.
  */
 export class Focus {
   /** The directory whose contents are on screen: the inner one once the crossfade is past half way. */
@@ -117,7 +129,7 @@ export class Focus {
     this.changed = true;
   }
 
-  /** Advances the camera tween, then derives what is on screen from the zoom. True while the tween runs. */
+  /** Advances the camera tween, then derives what is on screen from the camera. True while the tween runs. */
   update(now: number): boolean {
     const tween = this.tween;
     if (tween) {
@@ -139,48 +151,66 @@ export class Focus {
   private sync(): void {
     const target = this.controls.target;
     const distance = this.camera.position.distanceTo(target);
+    forward.subVectors(target, this.camera.position).normalize();
     const destination = this.tween?.to ?? -1;
-    // Zoomed out past where the open directory fully shows: its parent's contents return, and further out the parent
-    // opens. An open directory is also left at once when a bubble beside it has taken the orbit target (zooming
-    // toward a neighbour), or when it is off the path of a camera move: what it shows is no longer where the camera looks.
+    // Zoomed out past where the open directory fully shows, or panned until the middle of the screen leaves it: its
+    // parent's contents return, and further out the parent opens. An open directory off the path of a camera move
+    // is left at once: what it shows is no longer where the camera looks.
     for (let parent = this.tree.viewParent[this.open]; parent >= 0; parent = this.tree.viewParent[this.open]) {
       if (destination >= 0 && !this.onPath(this.open, destination)) {
         this.open = parent;
         continue;
       }
       const reveal = this.reveal(parent, this.open, distance);
-      const rival = reveal >= 1 ? this.childAround(parent, target) : -1;
-      if (reveal >= 1 && (rival < 0 || rival === this.open)) break;
-      if (reveal > 0 && reveal < 1) return this.show(parent, this.open, reveal);
+      if (reveal >= 1) break;
+      if (reveal > 0) return this.show(parent, this.open, reveal);
       this.open = parent;
     }
     // Zoomed in on a sub-directory: its contents fade in with the zoom, and at the end it opens. A camera move opens
     // only the directories on the way to the one it frames: the orbit target crosses other bubbles on the way there.
     for (;;) {
-      const child = destination >= 0 ? this.towards(this.open, destination) : this.childAround(this.open, target);
-      const reveal = child < 0 ? 0 : this.reveal(this.open, child, distance);
+      let child = -1;
+      let reveal = 0;
+      if (destination >= 0) {
+        child = this.towards(this.open, destination);
+        reveal = child < 0 ? 0 : this.reveal(this.open, child, distance);
+      } else {
+        // The sub-directory the middle of the screen looks into; the one furthest along when the view is between two.
+        for (const candidate of this.tree.children[this.open]) {
+          const r = this.reveal(this.open, candidate, distance);
+          if (r > reveal) [child, reveal] = [candidate, r];
+        }
+      }
       if (reveal < 1) return reveal > 0 ? this.show(this.open, child, reveal) : this.show(this.open, this.open, 1);
       this.open = child;
     }
   }
 
-  /** 0 → 1 as the camera zooms from framing `outer` to framing `inner`, eased. */
+  /** 0 → 1 as the camera zooms from framing `outer` to framing `inner` while looking into `inner`, eased. */
   private reveal(outer: number, inner: number, distance: number): number {
+    const central = this.central(inner);
+    if (central <= 0) return 0;
     const outerRadius = this.sphereOf(outer).radius;
     const span = Math.log(outerRadius / this.sphereOf(inner).radius);
     const zoom = Math.log(fitDistance(outerRadius, this.camera) / distance);
-    if (span < 1e-3) return zoom >= 0 ? 1 : 0;
+    if (span < 1e-3) return zoom >= 0 ? central : 0;
     const x = THREE.MathUtils.clamp((zoom / span - REVEAL_START) / (REVEAL_END - REVEAL_START), 0, 1);
-    return x * x * (3 - 2 * x);
+    return x * x * (3 - 2 * x) * central;
   }
 
-  /** The sub-directory of `cluster` whose bubble holds `point`, or -1. */
-  private childAround(cluster: number, point: THREE.Vector3): number {
-    for (const child of this.tree.children[cluster]) {
-      const { center, radius } = this.sphereOf(child);
-      if (center.distanceToSquared(point) <= radius * radius) return child;
-    }
-    return -1;
+  /**
+   * 1 while the middle of the screen looks into `cluster`'s bubble, or the camera is inside it; fading to 0 as the
+   * centre ray moves out to the rim, so leaving a directory sideways is as smooth as zooming out of it.
+   */
+  private central(cluster: number): number {
+    const { center, radius } = this.sphereOf(cluster);
+    toCenter.subVectors(center, this.camera.position);
+    const distance = toCenter.length();
+    const inside = 1 - smoothstep(INSIDE_START, INSIDE_END, distance / radius);
+    const depth = toCenter.dot(forward);
+    if (depth <= 0) return inside;
+    const miss = Math.sqrt(Math.max(0, distance * distance - depth * depth)) / radius;
+    return Math.max(inside, 1 - smoothstep(CENTRAL_START, 1, miss));
   }
 
   /** The sub-directory of `cluster` on the way down to `destination`, or -1 when `destination` isn't below it. */
@@ -210,6 +240,11 @@ export class Focus {
       this.changed = true;
     }
   }
+}
+
+function smoothstep(from: number, to: number, value: number): number {
+  const x = THREE.MathUtils.clamp((value - from) / (to - from), 0, 1);
+  return x * x * (3 - 2 * x);
 }
 
 function fitDistance(radius: number, camera: THREE.PerspectiveCamera): number {
