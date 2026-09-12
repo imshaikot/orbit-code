@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import type { Rgb } from '../palette';
 
-// Glow geometry for the skill and history constellations. Lines are screen-space quads, so they have a width in pixels
+// Glow geometry for the skill, history and MCP constellations. Lines are screen-space quads, so they have a width in pixels
 // at any distance: every glyph of one kind is a single instanced mesh whose wireframe template turns in four dimensions
-// in the vertex shader (a tesseract for a skill, a gyroscope of rings for a conversation), every link is an instance of
+// in the vertex shader (a tesseract for a skill, a gyroscope of rings for a conversation, a 16-cell for an MCP server), every link is an instance of
 // a second mesh, and every node's core an instance of a third. Colours are premultiplied and added onto a transparent
 // canvas, so the glass panel behind shows through everywhere but the light itself.
 
@@ -253,6 +253,23 @@ export function gyroscopeTemplate(segments = 28): Float32Array {
       q[v] = Math.sin(b) * 1.25;
       edges.push(...p, ...q);
     }
+  }
+  return new Float32Array(edges);
+}
+
+/** A 16-cell, the tesseract's dual: a corner one step out either way along each of the four axes, joined to every corner but its opposite. */
+export function stationTemplate(): Float32Array {
+  const corners: number[][] = [];
+  for (let axis = 0; axis < 4; axis++) {
+    for (const sign of [1, -1]) {
+      const corner = [0, 0, 0, 0];
+      corner[axis] = sign * 1.5;
+      corners.push(corner);
+    }
+  }
+  const edges: number[] = [];
+  for (let i = 0; i < 8; i++) {
+    for (let j = i + 1; j < 8; j++) if (i >> 1 !== j >> 1) edges.push(...corners[i], ...corners[j]);
   }
   return new Float32Array(edges);
 }

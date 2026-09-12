@@ -1,11 +1,18 @@
 import * as THREE from 'three';
-import { type CoreInstance, CoreMesh, type GlyphInstance, GlyphMesh, type GlowUniforms, type LinkInstance, LinkMesh, type Point, gyroscopeTemplate, tesseractTemplate } from './glyphs';
+import { type CoreInstance, CoreMesh, type GlyphInstance, GlyphMesh, type GlowUniforms, type LinkInstance, LinkMesh, type Point, gyroscopeTemplate, stationTemplate, tesseractTemplate } from './glyphs';
 
 export interface Field {
   left: number;
   top: number;
   width: number;
   height: number;
+}
+
+/** Glyphs by kind: a tesseract per skill, a gyroscope per conversation, a 16-cell per MCP server. */
+export interface Glyphs {
+  tesseracts: readonly GlyphInstance[];
+  gyroscopes: readonly GlyphInstance[];
+  stations?: readonly GlyphInstance[];
 }
 
 const FOV = 36;
@@ -23,7 +30,7 @@ export class ConstellationView {
   private failed = false;
   private readonly scene = new THREE.Scene();
   private readonly uniforms: GlowUniforms = { uTime: { value: 0 }, uViewport: { value: new THREE.Vector2(1, 1) }, uPixelRatio: { value: 1 } };
-  private meshes: { tesseracts: GlyphMesh; gyroscopes: GlyphMesh; cores: CoreMesh; links: LinkMesh } | undefined;
+  private meshes: { tesseracts: GlyphMesh; gyroscopes: GlyphMesh; stations: GlyphMesh; cores: CoreMesh; links: LinkMesh } | undefined;
   private viewport = { width: 1, height: 1, ratio: 0 };
   private field: Field = { left: 0, top: 0, width: 1, height: 1 };
   private readonly shift = new THREE.Matrix4();
@@ -57,10 +64,11 @@ export class ConstellationView {
     this.meshes = {
       tesseracts: new GlyphMesh(tesseractTemplate(), this.uniforms, 0.55, 1.5),
       gyroscopes: new GlyphMesh(gyroscopeTemplate(), this.uniforms, 0.4, 1.2),
+      stations: new GlyphMesh(stationTemplate(), this.uniforms, 0.35, 1.4),
       cores: new CoreMesh(this.uniforms),
       links: new LinkMesh(this.uniforms),
     };
-    this.scene.add(this.meshes.links.mesh, this.meshes.cores.mesh, this.meshes.tesseracts.mesh, this.meshes.gyroscopes.mesh);
+    this.scene.add(this.meshes.links.mesh, this.meshes.cores.mesh, this.meshes.tesseracts.mesh, this.meshes.gyroscopes.mesh, this.meshes.stations.mesh);
     this.viewport.ratio = 0;
     return true;
   }
@@ -110,11 +118,12 @@ export class ConstellationView {
     this.camera.updateMatrixWorld();
   }
 
-  render(time: number, glyphs: { tesseracts: readonly GlyphInstance[]; gyroscopes: readonly GlyphInstance[] }, cores: readonly CoreInstance[], links: readonly LinkInstance[]): void {
+  render(time: number, glyphs: Glyphs, cores: readonly CoreInstance[], links: readonly LinkInstance[]): void {
     if (!this.ready || !this.renderer || !this.meshes || this.canvas.hidden) return;
     this.uniforms.uTime.value = time;
     this.meshes.tesseracts.set(glyphs.tesseracts);
     this.meshes.gyroscopes.set(glyphs.gyroscopes);
+    this.meshes.stations.set(glyphs.stations ?? []);
     this.meshes.cores.set(cores);
     this.meshes.links.set(links);
     this.renderer.render(this.scene, this.camera);
