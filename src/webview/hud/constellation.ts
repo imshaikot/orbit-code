@@ -4,6 +4,7 @@ import type { CoreInstance, GlyphInstance, LinkInstance } from '../constellation
 import { ConstellationView, type FitPoint } from '../constellation/view';
 import { MCP_STATUS_COLORS, PALETTE, type Rgb, SCOPE_COLORS, cssColor, hex } from '../palette';
 import { button, el } from './dom';
+import { TimeRange } from './timeRange';
 import { plural, relativeTime } from './turns';
 
 export type ConstellationMode = 'skills' | 'history' | 'mcp';
@@ -40,6 +41,8 @@ interface Item {
   match: number;
   /** Eased visibility under the filter: 1 shown, near 0 dimmed away. */
   dim: number;
+  /** Where a conversation, pinned to its place in time across, is gliding to after the time range changed. */
+  slideTo?: number;
   target?: HTMLButtonElement;
   tag?: HTMLElement;
   skill?: SkillInfo;
@@ -158,6 +161,7 @@ export class Constellation {
   private readonly detailOpen = button('Open SKILL.md', 'link-button cd-open');
   private readonly detailActions = el('div', 'cd-actions');
   private readonly dragLabel = el('div', 'skill-drag-label');
+  private readonly range = new TimeRange(() => this.rangeChanged());
   private readonly view: ConstellationView;
 
   private current: ConstellationMode | undefined;
@@ -222,7 +226,8 @@ export class Constellation {
     this.detailActions.hidden = true;
     const detail = el('footer', 'constellation-detail');
     detail.append(detailHead, this.detailMeta, this.detailText);
-    this.panel.append(head, this.field, detail);
+    this.range.element.hidden = true;
+    this.panel.append(head, this.field, this.range.element, detail);
     this.root.append(this.panel);
     mount.append(this.root);
 
@@ -272,9 +277,11 @@ export class Constellation {
     matches: string[];
     highlighted: string | undefined;
     zoom: number;
+    range: [number, number] | undefined;
     pinned: string | undefined;
   } {
     return {
+      range: this.range.bounds,
       mode: this.current,
       glyphs: this.items.filter((item) => item.kind !== 'hub' && item.kind !== 'tool').length,
       links: this.links.length,
@@ -409,7 +416,8 @@ export class Constellation {
 
   setHistory(history: HistorySnapshot): void {
     this.history = history;
-    const signature = history.conversations.map((conversation) => `${conversation.id}@${conversation.updatedAt}`).join('|');
+    this.range.setTimes(history.conversations.map((conversation) => conversation.updatedAt));
+    const signature =history.conversations.map((conversation) => `${conversation.id}@${conversation.updatedAt}`).join('|');
     const changed = signature !== this.historySignature;
     this.historySignature = signature;
     if (this.current === 'history') {
@@ -459,6 +467,16 @@ export class Constellation {
     if (fade <= 0) {
       this.hide();
       return false;
+    }
+    for (const item of this.items) {
+      if (item.slideTo === undefined) continue;
+      const anchor = item.node.anchor;
+      anchor[0] += (item.slideTo - anchor[0]) * Math.min(1, dt * 7);
+      if (Math.abs(item.slideTo - anchor[0]) < 0.01) {
+        anchor[0] = item.slideTo;
+        item.slideTo = undefined;
+      }
+      item.node.x = anchor[0];
     }
     this.layout.step();
     // Unfold quickly at first, then settle at the usual pace.
@@ -646,6 +664,11 @@ export class Constellation {
       const before = previous.get(item.key);
       if (before) {
         Object.assign(item.node, { x: before.node.x, y: before.node.y, z: before.node.z });
+        // A conversation pinned to its place in time glides to its new one from where it was.
+        if (item.node.pull[0] >= 1 && item.node.anchor[0] !== before.node.anchor[0] && !reducedMotion()) {
+          item.slideTo = item.node.anchor[0];
+          item.node.anchor[0] = before.node.anchor[0];
+        }
         item.appearAt = before.appearAt;
         item.emphasis = before.emphasis;
         item.dim = before.dim;
@@ -747,11 +770,25 @@ export class Constellation {
     return { items, links, forces };
   }
 
+  /** The conversations last active inside the time range, oldest first. */
+  private shownConversations(): ConversationSummary[] {
+    return this.history.conversations.filter((conversation) => this.range.includes(conversation.updatedAt)).sort((a, b) => a.startedAt - b.startedAt);
+  }
+
+  /** The time range moved: the timeline is built again once it keeps other conversations. */
+  private rangeChanged(): void {
+    if (this.current !== 'history') return;
+    const shown = this.shownConversations().map((conversation) => conversation.id);
+    const drawn = this.items.flatMap((item) => (item.conversation ? [item.conversation.id] : []));
+    if (shown.join('|') !== drawn.join('|')) this.rebuild();
+    this.events.wake();
+  }
+
   private historyGraph(): Graph {
     const items: Item[] = [];
     const links: Link[] = [];
     const forces: ForceLink[] = [];
-    const conversations = [...this.history.conversations].sort((a, b) => a.startedAt - b.startedAt);
+    const conversations = this.shownConversations();
     const n = conversations.length;
     const span = Math.max(20, n * 4.5);
     conversations.forEach((conversation, k) => {
@@ -1006,15 +1043,18 @@ export class Constellation {
 
   private renderHead(): void {
     this.keys.replaceChildren();
+    this.range.element.hidden = this.current !== 'history' || !this.range.usable;
     if (this.current === 'history') {
       const count = this.history.conversations.length;
+      const shown = this.shownConversations().length;
       this.title.textContent = 'History';
-      this.sub.textContent = count > 0 ? `${plural(count, 'earlier conversation')} in this workspace, oldest on the left` : '';
+      this.sub.textContent =
+        count === 0 ? '' : this.range.bounds ? `${shown} of ${plural(count, 'earlier conversation')} last active in this range, oldest on the left` : `${plural(count, 'earlier conversation')} in this workspace, oldest on the left`;
       if (count > 0) this.keys.append(key(OLDER, 'Older'), key(SCOPE_COLORS.project, 'Recent'), key(SHARED, 'Same files', 'Joins conversations that read or edited the same files'));
       if (this.history.conversations.some((conversation) => conversation.id === this.conversationId)) this.keys.append(key(PALETTE.claudeCore, 'In Orbit now'));
       this.setRefresh('Refresh', undefined, this.history.loading);
       this.empty.textContent =
-        count > 0 ? '' : this.history.loading ? 'Reading earlier conversations…' : this.history.error ? `Could not read them: ${this.history.error}` : 'No earlier Claude Code conversations in this workspace yet.';
+        shown > 0 ? '' : count > 0 ? 'No conversation was last active in this range. Widen it, or choose All.' : this.history.loading ? 'Reading earlier conversations…' : this.history.error ? `Could not read them: ${this.history.error}` : 'No earlier Claude Code conversations in this workspace yet.';
     } else if (this.current === 'mcp') {
       const servers = this.catalog?.mcpServers ?? [];
       const mcp = this.catalog?.mcp;

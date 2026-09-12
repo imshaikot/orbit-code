@@ -1139,6 +1139,132 @@ select:focus-visible {
   color: var(--ink-faint);
 }
 
+/* Under the history timeline: the time range, a tick per conversation where it was last active. */
+.time-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 18px 4px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.tr-label {
+  flex: 0 0 7.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 160ms ease;
+}
+
+.tr-label-from {
+  text-align: right;
+}
+
+.time-range[data-narrowed='true'] .tr-label {
+  color: var(--ink-soft);
+}
+
+.tr-track {
+  flex: 1 1 auto;
+  height: 26px;
+  padding: 0 7px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.tr-rail {
+  position: relative;
+  height: 100%;
+}
+
+.tr-rail::before,
+.tr-fill {
+  content: '';
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+}
+
+.tr-rail::before {
+  left: 0;
+  right: 0;
+  background: var(--rule);
+}
+
+.tr-fill {
+  background: var(--claude);
+  box-shadow: 0 0 6px rgba(187, 168, 255, 0.5);
+}
+
+.tr-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tr-tick {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  margin: -5px 0 0 -1px;
+  border-radius: 1px;
+  background: var(--ink-faint);
+  opacity: 0.4;
+  transition:
+    opacity 160ms ease,
+    background-color 160ms ease;
+}
+
+.tr-tick[data-in='true'] {
+  background: var(--core);
+  opacity: 0.85;
+}
+
+.tr-thumb {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: var(--core);
+  box-shadow:
+    0 0 0 3px rgba(187, 168, 255, 0.22),
+    0 0 10px rgba(187, 168, 255, 0.6);
+  cursor: grab;
+  transition: transform 160ms ease;
+}
+
+.tr-thumb:hover,
+.tr-thumb:focus-visible {
+  transform: scale(1.2);
+}
+
+.tr-thumb:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: 3px;
+}
+
+.time-range[data-dragging] .tr-track,
+.time-range[data-dragging] .tr-thumb {
+  cursor: grabbing;
+}
+
+.tr-all {
+  flex: none;
+  font-size: 11.5px;
+  text-shadow: none;
+}
+
+.time-range:not([data-narrowed='true']) .tr-all {
+  visibility: hidden;
+}
+
 .constellation-detail {
   min-height: 62px;
   padding: 8px 18px 14px;
