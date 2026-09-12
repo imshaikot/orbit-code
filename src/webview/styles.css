@@ -26,6 +26,8 @@
   /* A skill's tesseract and a conversation's gyroscope, as masks for icons. */
   --tesseract: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M3 3h18v18H3zM8.5 8.5h7v7h-7zM3 3l5.5 5.5M21 3l-5.5 5.5M21 21l-5.5-5.5M3 21l5.5-5.5'/%3E%3C/svg%3E");
   --gyroscope: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7'%3E%3Ccircle cx='12' cy='12' r='9.5'/%3E%3Cellipse cx='12' cy='12' rx='9.5' ry='3.5'/%3E%3Cellipse cx='12' cy='12' rx='3.5' ry='9.5'/%3E%3C/svg%3E");
+  /* An MCP server's 16-cell, as a mask for the sheet's MCP button. */
+  --station: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M12 2.5L21.5 12L12 21.5L2.5 12Z M12 2.5L15.5 12L12 21.5L8.5 12Z M2.5 12H21.5'/%3E%3C/svg%3E");
   /* A paperclip for files attached to a prompt, as a mask for icons. */
   --paperclip: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.9-8.9a3.7 3.7 0 0 1 5.2 5.2l-8.9 8.9a1.8 1.8 0 0 1-2.6-2.6l8.2-8.2'/%3E%3C/svg%3E");
   /* Claude's spark, used as a mask so it takes any colour. */
@@ -879,21 +881,45 @@ select:focus-visible {
     0 0 28px rgba(165, 139, 255, 0.38);
 }
 
+/* Top right of the sheet: the MCP servers, how many are connected, and the state that most needs the user. */
 .sheet-mcp {
-  color: var(--ink-faint);
-  cursor: default;
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
-.sheet-mcp::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  vertical-align: 1px;
-  border-radius: 50%;
-  background: var(--mcp);
-  box-shadow: 0 0 6px var(--mcp);
+.drawer .sheet-context {
+  padding-right: 104px;
+}
+
+.composer-toggle-mcp {
+  --glyph: var(--station);
+  background: var(--mcp-state, currentColor);
+}
+
+.sheet-mcp[data-state='connected'] {
+  --mcp-state: #e2ff5a;
+}
+
+.sheet-mcp[data-state='pending'] {
+  --mcp-state: #6fc8ff;
+}
+
+.sheet-mcp[data-state='needs-auth'] {
+  --mcp-state: #ffae42;
+}
+
+.sheet-mcp[data-state='failed'] {
+  --mcp-state: #ff5c9a;
+}
+
+.sheet-mcp-count {
+  color: var(--ink-faint);
+}
+
+.sheet-mcp-count:empty {
+  display: none;
 }
 
 /* ── Skill and history constellations ───────────────────────── */
@@ -1023,7 +1049,8 @@ select:focus-visible {
 }
 
 .skill-node,
-.history-node {
+.history-node,
+.mcp-node {
   position: absolute;
   left: 0;
   top: 0;
@@ -1047,19 +1074,22 @@ select:focus-visible {
 }
 
 .skill-node[data-shown='false'],
-.history-node[data-shown='false'] {
+.history-node[data-shown='false'],
+.mcp-node[data-shown='false'] {
   pointer-events: none;
 }
 
 .skill-node:focus-visible,
-.history-node:focus-visible {
+.history-node:focus-visible,
+.mcp-node:focus-visible {
   outline: 2px solid var(--read);
   outline-offset: 2px;
 }
 
 /* Without WebGL the buttons are all there is, so they show. */
 .constellation[data-webgl='off'] .skill-node,
-.constellation[data-webgl='off'] .history-node {
+.constellation[data-webgl='off'] .history-node,
+.constellation[data-webgl='off'] .mcp-node {
   background: rgba(165, 139, 255, 0.22);
   border: 1px solid rgba(198, 182, 255, 0.6);
 }
@@ -1140,6 +1170,24 @@ select:focus-visible {
   margin-left: auto;
   font-size: 11.5px;
   text-shadow: none;
+}
+
+/* The MCP view's buttons for the server the detail describes. */
+.cd-actions {
+  flex: none;
+  display: flex;
+  gap: 14px;
+  margin-left: auto;
+}
+
+.cd-action {
+  font-size: 11.5px;
+  text-shadow: none;
+}
+
+.cd-action:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .cd-meta {

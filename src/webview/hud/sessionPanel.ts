@@ -1,4 +1,4 @@
-import type { AgentCatalog, ConversationSummary, HistorySnapshot, PermissionAnswer, SessionOptions, SessionState, SessionsSnapshot, TranscriptEntry } from '../../shared/protocol';
+import type { AgentCatalog, ConversationSummary, HistorySnapshot, McpAction, PermissionAnswer, SessionOptions, SessionState, SessionsSnapshot, TranscriptEntry } from '../../shared/protocol';
 import { type ClaudeBubble, ClaudeBubbles } from './claudeBubbles';
 import { Constellation } from './constellation';
 import { type DrawerToggle, PromptDrawer } from './drawer';
@@ -18,6 +18,10 @@ export interface SessionActions {
   answerPermission(key: string, id: string, answer: PermissionAnswer, answers?: Record<string, string>): void;
   openFile(path: string): void;
   refreshCatalog(): void;
+  /** The MCP view's Reload: every MCP server started afresh and asked how it connected. */
+  reloadMcp(): void;
+  /** Reconnect, enable, disable, sign in to or sign out of an MCP server. */
+  mcpAction(server: string, action: McpAction): void;
   loadHistory(): void;
   resumeConversation(id: string): void;
 }
@@ -92,7 +96,8 @@ export class SessionPanel {
       dropTarget: () => this.drawer.dropRect(),
       dragState: (state) => this.drawer.setDropState(state),
       openConversation: (conversation, origin) => this.openHistory(conversation, origin),
-      refresh: (mode) => (mode === 'skills' ? actions.refreshCatalog() : actions.loadHistory()),
+      refresh: (mode) => (mode === 'skills' ? actions.refreshCatalog() : mode === 'history' ? actions.loadHistory() : actions.reloadMcp()),
+      mcpAction: (server, action) => actions.mcpAction(server, action),
       openFile: (path) => actions.openFile(path),
       closed: () => {
         this.drawer.setToggled(undefined);
@@ -272,7 +277,7 @@ export class SessionPanel {
     return true;
   }
 
-  /** A toggle in the composer bar: opens its panel, switches to it from the other one, or closes it. */
+  /** A toggle in the composer bar or the sheet's MCP button: opens its panel, switches to it from another one, or closes it. */
   private toggle(kind: DrawerToggle, from: DOMRect): void {
     if (this.constellation.mode === kind) {
       this.constellation.close();

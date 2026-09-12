@@ -1,12 +1,12 @@
-import type { AgentCatalog, ConversationSummary, HistorySnapshot, SkillInfo, SkillScope } from '../../shared/protocol';
+import type { AgentCatalog, ConversationSummary, HistorySnapshot, McpAction, McpServerInfo, SkillInfo, SkillScope } from '../../shared/protocol';
 import { type ForceLink, ForceLayout, type ForceNode } from '../constellation/forceLayout';
 import type { CoreInstance, GlyphInstance, LinkInstance } from '../constellation/glyphs';
 import { ConstellationView } from '../constellation/view';
-import { PALETTE, type Rgb, SCOPE_COLORS, cssColor, hex } from '../palette';
+import { MCP_STATUS_COLORS, PALETTE, type Rgb, SCOPE_COLORS, cssColor, hex } from '../palette';
 import { button, el } from './dom';
 import { plural, relativeTime } from './turns';
 
-export type ConstellationMode = 'skills' | 'history';
+export type ConstellationMode = 'skills' | 'history' | 'mcp';
 
 export interface ConstellationEvents {
   /** A skill was chosen: dropped on the composer, clicked, or picked with the keyboard. */
@@ -16,7 +16,10 @@ export interface ConstellationEvents {
   /** A skill is being dragged ('ready'), is over the drop target ('over'), or no longer (undefined). */
   dragState(state: 'ready' | 'over' | undefined): void;
   openConversation(conversation: ConversationSummary, origin: DOMRect): void;
+  /** Refresh (skills, history) or Reload (MCP servers). */
   refresh(mode: ConstellationMode): void;
+  /** A button under the MCP constellation: reconnect, enable, disable, sign in to or sign out of a server. */
+  mcpAction(server: string, action: McpAction): void;
   openFile(path: string): void;
   /** The panel closed, by any path. */
   closed(): void;
@@ -25,7 +28,7 @@ export interface ConstellationEvents {
 
 interface Item {
   key: string;
-  kind: 'hub' | 'skill' | 'conversation';
+  kind: 'hub' | 'skill' | 'conversation' | 'server' | 'tool';
   color: Rgb;
   size: number;
   node: ForceNode;
@@ -41,6 +44,7 @@ interface Item {
   tag?: HTMLElement;
   skill?: SkillInfo;
   conversation?: ConversationSummary;
+  server?: McpServerInfo;
   scope?: SkillScope;
 }
 
@@ -77,9 +81,43 @@ const SHARED = hex('#d9ceff');
 const MAX_ZOOM = 4;
 /** What a glyph that fails the filter fades to. */
 const DIMMED = 0.1;
+/** How an MCP server connected, as the MCP constellation groups and colours it. */
+type ServerGroup = keyof typeof MCP_STATUS_COLORS;
+const GROUPS: readonly ServerGroup[] = ['connected', 'pending', 'needs-auth', 'failed', 'disabled'];
+const GROUP_LABELS: Record<ServerGroup, string> = { connected: 'Connected', pending: 'Connecting', 'needs-auth': 'Needs you', failed: 'Failed', disabled: 'Disabled' };
+const GROUP_TITLES: Record<ServerGroup, string> = {
+  connected: 'Claude can use their tools',
+  pending: 'Still connecting',
+  'needs-auth': 'Waiting for you to sign in, or to approve them',
+  failed: 'Could not connect',
+  disabled: 'Disabled in your Claude Code settings',
+};
+/** How strongly the line from Claude to a server shows, by how it connected. */
+const LINK_ALPHA: Record<ServerGroup, number> = { connected: 0.34, pending: 0.22, 'needs-auth': 0.2, failed: 0.14, disabled: 0.08 };
+const MCP_SCOPES: Record<string, string> = {
+  user: 'your settings',
+  project: "the workspace's .mcp.json",
+  local: 'this workspace, for you',
+  claudeai: 'claude.ai connector',
+  dynamic: 'a plugin',
+  enterprise: 'your organisation',
+};
+const TRANSPORTS: Record<string, string> = { stdio: 'local process', http: 'HTTP', sse: 'SSE', ws: 'WebSocket', 'claudeai-proxy': 'through claude.ai', sdk: 'SDK' };
+const ACTION_LABELS: Record<McpAction, string> = { reconnect: 'Reconnect', enable: 'Enable', disable: 'Disable', signIn: 'Sign in', signOut: 'Sign out' };
+const ACTION_PENDING: Record<McpAction, string> = { reconnect: 'Reconnecting…', enable: 'Enabling…', disable: 'Disabling…', signIn: 'Signing in…', signOut: 'Signing out…' };
+const ACTION_TITLES: Record<McpAction, string> = {
+  reconnect: 'Connect to it again',
+  enable: 'Enable it in your Claude Code settings, as /mcp does',
+  disable: 'Disable it in your Claude Code settings, as /mcp does: Claude goes without it',
+  signIn: 'Open the page to sign in on, in your browser',
+  signOut: 'Forget the sign-in Claude Code keeps for it',
+};
+/** Tools drawn around a connected server; the detail line names them all. */
+const MAX_SATELLITES = 16;
 
 /**
- * The panel above the composer that the Skills and History toggles open, drawn as a small constellation.
+ * The panel above the composer that the Skills and History toggles, and the sheet's MCP button, open, drawn as a small
+ * constellation.
  *
  * Skills: one tesseract per skill Claude Code offers here, turning in four dimensions, gathered around a star for where
  * it comes from (this workspace, the user's own, a plugin); lines join skills whose instructions name each other. A
@@ -87,6 +125,10 @@ const DIMMED = 0.1;
  *
  * History: one gyroscope per earlier conversation of this workspace, oldest on the left; lines join conversations that
  * worked on the same files. Clicking one opens it in the history panel.
+ *
+ * MCP: one 16-cell per MCP server Claude Code loads here, on a ring around Claude and coloured by how it connected, a
+ * connected one with its tools around it. Clicking one offers what `/mcp` would: reconnect, sign in or out, enable or
+ * disable. Reload starts every server afresh.
  *
  * The glyphs are WebGL on a canvas over the whole viewport (ConstellationView); what takes the pointer and the keyboard
  * are transparent buttons kept over each glyph, so picking is the browser's own hit testing.
@@ -107,6 +149,7 @@ export class Constellation {
   private readonly detailMeta = el('p', 'cd-meta');
   private readonly detailText = el('p', 'cd-text');
   private readonly detailOpen = button('Open SKILL.md', 'link-button cd-open');
+  private readonly detailActions = el('div', 'cd-actions');
   private readonly dragLabel = el('div', 'skill-drag-label');
   private readonly view: ConstellationView;
 
@@ -121,6 +164,8 @@ export class Constellation {
   private hovered: Item | undefined;
   /** The item the detail line describes once the pointer has moved on, so its link can still be clicked. */
   private selected: Item | undefined;
+  /** The MCP server clicked: its detail and buttons stay while the pointer passes other glyphs on its way to them. */
+  private pinned: Item | undefined;
   private drag: { item: Item; target: HTMLButtonElement; pointerId: number; x: number; y: number; moved: boolean; over: boolean } | undefined;
   private suppressClick = false;
   private catalog: AgentCatalog | undefined;
@@ -129,6 +174,9 @@ export class Constellation {
   private readonly attached = new Set<string>();
   private skillSignature = '';
   private historySignature = '';
+  private mcpSignature = '';
+  /** The MCP buttons last drawn, so a catalog that changes nothing about them does not replace them under the pointer. */
+  private actionsSignature = '';
   private orbit = 0;
   private distance = 0;
   private motion: Animation | undefined;
@@ -163,7 +211,8 @@ export class Constellation {
     this.empty.setAttribute('aria-live', 'polite');
     this.field.append(this.targets, this.empty);
     const detailHead = el('div', 'cd-head');
-    detailHead.append(this.detailTitle, this.detailOpen);
+    detailHead.append(this.detailTitle, this.detailOpen, this.detailActions);
+    this.detailActions.hidden = true;
     const detail = el('footer', 'constellation-detail');
     detail.append(detailHead, this.detailMeta, this.detailText);
     this.panel.append(head, this.field, detail);
@@ -206,10 +255,21 @@ export class Constellation {
   }
 
   /** Read by scripts/harness.mjs. */
-  get debug(): { mode: ConstellationMode | undefined; glyphs: number; links: number; frames: number; webgl: boolean; filter: string; matches: string[]; highlighted: string | undefined; zoom: number } {
+  get debug(): {
+    mode: ConstellationMode | undefined;
+    glyphs: number;
+    links: number;
+    frames: number;
+    webgl: boolean;
+    filter: string;
+    matches: string[];
+    highlighted: string | undefined;
+    zoom: number;
+    pinned: string | undefined;
+  } {
     return {
       mode: this.current,
-      glyphs: this.items.filter((item) => item.kind !== 'hub').length,
+      glyphs: this.items.filter((item) => item.kind !== 'hub' && item.kind !== 'tool').length,
       links: this.links.length,
       frames: this.frames,
       webgl: this.root.dataset.webgl !== 'off',
@@ -217,6 +277,7 @@ export class Constellation {
       matches: this.matches.map((item) => item.skill?.name ?? ''),
       highlighted: this.highlighted?.skill?.name,
       zoom: this.zoomTarget,
+      pinned: this.pinned?.server?.name,
     };
   }
 
@@ -254,7 +315,7 @@ export class Constellation {
     this.events.wake();
   }
 
-  /** Opens out of `from` (the toggle), or switches to `mode` in place when the other one is open. */
+  /** Opens out of `from` (the toggle), or switches to `mode` in place when another one is open. */
   open(mode: ConstellationMode, from?: DOMRect): void {
     const switching = this.current !== undefined;
     this.cancelDrag();
@@ -263,9 +324,9 @@ export class Constellation {
     this.openedAt = this.time;
     this.root.hidden = false;
     this.root.dataset.mode = mode;
-    this.panel.setAttribute('aria-label', mode === 'skills' ? 'Skills' : 'Conversation history');
+    this.panel.setAttribute('aria-label', mode === 'skills' ? 'Skills' : mode === 'history' ? 'Conversation history' : 'MCP servers');
     if (!this.view.ready) this.root.dataset.webgl = 'off';
-    this.hovered = this.selected = undefined;
+    this.hovered = this.selected = this.pinned = undefined;
     this.items = [];
     this.distance = 0;
     this.zoom = this.zoomTarget = 1;
@@ -292,6 +353,7 @@ export class Constellation {
     this.endPan();
     this.current = undefined;
     this.hovered = undefined;
+    this.pinned = undefined;
     this.filter = '';
     this.matches = [];
     this.highlighted = undefined;
@@ -322,9 +384,19 @@ export class Constellation {
     const signature = catalog.skills.map((skill) => `${skill.scope}:${skill.name}>${skill.references.join(',')}`).join('|');
     const changed = signature !== this.skillSignature;
     this.skillSignature = signature;
+    // What the MCP graph is built from; a note or `checkedAt` alone only changes the words.
+    const servers = catalog.mcpServers.map((server) => `${server.name}:${server.status}:${server.tools}:${server.toolNames?.length ?? 0}:${server.pending ?? ''}`).join('|');
+    const serversChanged = servers !== this.mcpSignature;
+    this.mcpSignature = servers;
     if (this.current === 'skills') {
       if (changed) this.rebuild();
       else this.renderHead();
+    } else if (this.current === 'mcp') {
+      if (serversChanged) this.rebuild();
+      else {
+        this.renderHead();
+        this.renderDetail();
+      }
     }
   }
 
@@ -418,9 +490,10 @@ export class Constellation {
     this.fitButton.hidden = this.zoomTarget <= 1.02;
     this.field.dataset.zoomed = String(this.zoomTarget > 1.02);
 
-    const focus = this.drag?.item ?? this.hovered ?? this.highlighted;
+    const focus = this.drag?.item ?? this.hovered ?? this.highlighted ?? this.pinned;
     const tesseracts: GlyphInstance[] = [];
     const gyroscopes: GlyphInstance[] = [];
+    const stations: GlyphInstance[] = [];
     const cores: CoreInstance[] = [];
     const shown = (item: Item) => ease((this.time - item.appearAt) / APPEAR_S) * fade;
     for (const item of this.items) {
@@ -429,9 +502,12 @@ export class Constellation {
       const appear = shown(item);
       const { x, y, z } = item.node;
       const size = item.size * (0.55 + 0.45 * item.dim);
-      if (item.kind === 'skill') tesseracts.push({ x, y, z, size, phase: item.phase, emphasis: item.emphasis, appear, color: item.color, alpha: item.dim });
-      else if (item.kind === 'conversation') gyroscopes.push({ x, y, z, size, phase: item.phase, emphasis: item.emphasis, appear, color: item.color, alpha: item.dim });
-      cores.push({ x, y, z, size: item.kind === 'hub' ? 2.2 : size * 0.85, appear, emphasis: item.emphasis, ring: item.ring, color: item.color, alpha: (item.kind === 'hub' ? 1 : 0.7) * item.dim });
+      const glyph = { x, y, z, size, phase: item.phase, emphasis: item.emphasis, appear, color: item.color, alpha: item.dim };
+      if (item.kind === 'skill') tesseracts.push(glyph);
+      else if (item.kind === 'conversation') gyroscopes.push(glyph);
+      else if (item.kind === 'server') stations.push(glyph);
+      const coreSize = item.kind === 'hub' ? 2.2 : item.kind === 'tool' ? size : size * 0.85;
+      cores.push({ x, y, z, size: coreSize, appear, emphasis: item.emphasis, ring: item.ring, color: item.color, alpha: (item.kind === 'hub' ? 1 : 0.7) * item.dim });
     }
     const links: LinkInstance[] = this.links.map((link) => {
       const a = this.items[link.a];
@@ -439,7 +515,7 @@ export class Constellation {
       const lit = a === focus || b === focus ? 2 : 1;
       return { from: a.node, to: b.node, color: link.color, alpha: link.alpha * Math.min(shown(a), shown(b)) * Math.min(a.dim, b.dim) * lit, width: link.width, flow: link.flow, seed: link.seed };
     });
-    this.view.render(this.time, { tesseracts, gyroscopes }, cores, links);
+    this.view.render(this.time, { tesseracts, gyroscopes, stations }, cores, links);
     this.placeTargets(rect, fade);
     this.frames++;
     return true;
@@ -547,9 +623,10 @@ export class Constellation {
   private rebuild(): void {
     this.cancelDrag();
     const previous = new Map(this.items.map((item) => [item.key, item]));
-    const graph = this.current === 'history' ? this.historyGraph() : this.skillGraph();
+    const graph = this.current === 'history' ? this.historyGraph() : this.current === 'mcp' ? this.mcpGraph() : this.skillGraph();
     this.targets.replaceChildren();
-    graph.items.forEach((item, k) => {
+    let fresh = 0;
+    for (const item of graph.items) {
       const before = previous.get(item.key);
       if (before) {
         Object.assign(item.node, { x: before.node.x, y: before.node.y, z: before.node.z });
@@ -557,14 +634,15 @@ export class Constellation {
         item.emphasis = before.emphasis;
         item.dim = before.dim;
       } else {
-        item.appearAt = this.time + 0.14 + k * STAGGER_S;
+        // A server's tools come in just after it, without holding up the servers after it.
+        item.appearAt = this.time + 0.14 + (item.kind === 'tool' ? (fresh + 4) * STAGGER_S : fresh++ * STAGGER_S);
       }
       if (item.target) {
         this.bind(item, item.target);
         this.targets.append(item.target);
       }
       if (item.tag) this.targets.append(item.tag);
-    });
+    }
     const kept = graph.items.some((item) => previous.has(item.key));
     this.items = graph.items;
     this.links = graph.links;
@@ -577,6 +655,7 @@ export class Constellation {
     const same = (item: Item | undefined) => (item ? this.items.find((candidate) => candidate.key === item.key) : undefined);
     this.hovered = same(this.hovered);
     this.selected = same(this.selected);
+    this.pinned = same(this.pinned);
     const highlighted = same(this.highlighted);
     this.applyFilter();
     if (highlighted && this.matches.includes(highlighted)) this.highlighted = highlighted;
@@ -711,6 +790,69 @@ export class Constellation {
     return { items, links, forces };
   }
 
+  /**
+   * Claude at the centre and a 16-cell per MCP server on a ring around it, the servers of one state side by side. Each
+   * joins Claude by a line, pulsing out to a connected one, which carries its tools around it as sparks.
+   */
+  private mcpGraph(): Graph {
+    const items: Item[] = [];
+    const links: Link[] = [];
+    const forces: ForceLink[] = [];
+    const servers = [...(this.catalog?.mcpServers ?? [])].sort((a, b) => GROUPS.indexOf(groupOf(a.status)) - GROUPS.indexOf(groupOf(b.status)) || a.name.localeCompare(b.name));
+    if (servers.length === 0) return { items, links, forces };
+    const tag = el('span', 'constellation-label constellation-hub', 'Claude Code');
+    tag.style.setProperty('--key', cssColor(PALETTE.claudeHalo));
+    items.push(makeItem({ key: 'hub:claude', kind: 'hub', color: PALETTE.claudeHalo, size: 1, at: [0, 0, 0], anchor: [0, 0, 0], pull: [0.2, 0.2, 0.2], charge: 60, tag }));
+    const n = servers.length;
+    const radius = 8 + Math.sqrt(n) * 1.6;
+    servers.forEach((server, k) => {
+      const group = groupOf(server.status);
+      const color = MCP_STATUS_COLORS[group];
+      // Round from the left, connected servers first; the ring is flattened, as the panel is wider than it is tall.
+      const angle = Math.PI - ((k + 0.5) / n) * 2 * Math.PI;
+      const anchor: [number, number, number] = [Math.cos(angle) * radius, Math.sin(angle) * radius * 0.5, 0];
+      const seed = seeded(server.name);
+      const target = button('', 'mcp-node');
+      target.dataset.server = server.name;
+      target.dataset.status = server.status;
+      target.setAttribute('aria-label', `${server.name}, ${statusLabel(server.status)}${server.tools > 0 ? `, ${plural(server.tools, 'tool')}` : ''}. Show what can be done with it`);
+      const index = items.length;
+      items.push(
+        makeItem({
+          key: `server:${server.name}`,
+          kind: 'server',
+          color,
+          size: 1.7 + 0.35 * Math.log2(1 + server.tools),
+          at: [anchor[0] + (seed[0] - 0.5) * 2, anchor[1] + (seed[1] - 0.5) * 2, (seed[2] - 0.5) * 2],
+          anchor,
+          pull: [0.03, 0.03, 0.06],
+          charge: 44,
+          phase: seed[0] * 20,
+          // An action under way wears a ring until the host says how it went.
+          ring: server.pending ? 1 : 0,
+          target,
+          tag: el('span', 'constellation-label', server.name),
+          server,
+        }),
+      );
+      forces.push({ source: 0, target: index, distance: radius, strength: 0.06 });
+      links.push({ a: 0, b: index, color, alpha: LINK_ALPHA[group], width: group === 'connected' ? 1.6 : 1.1, flow: group === 'connected' ? 0.5 : group === 'pending' ? 0.9 : 0, seed: seed[1] });
+      if (group !== 'connected') return;
+      const names = server.toolNames ?? [];
+      const count = Math.min(MAX_SATELLITES, Math.max(names.length, server.tools));
+      for (let t = 0; t < count; t++) {
+        const around = angle + (t / count) * 2 * Math.PI;
+        const reach = 3.2 + (t % 2) * 0.8;
+        const spot: [number, number, number] = [anchor[0] + Math.cos(around) * reach, anchor[1] + Math.sin(around) * reach * 0.8, Math.sin(around * 1.7) * 1.2];
+        const tool = items.length;
+        items.push(makeItem({ key: `tool:${server.name}:${names[t] ?? t}`, kind: 'tool', color, size: 1.25, at: spot, anchor: spot, pull: [0.04, 0.04, 0.04], charge: 4 }));
+        forces.push({ source: index, target: tool, distance: reach, strength: 0.25 });
+        links.push({ a: index, b: tool, color, alpha: 0.2, width: 0.9, flow: 0.3, seed: (t * 0.37) % 1 });
+      }
+    });
+    return { items, links, forces };
+  }
+
   private bind(item: Item, target: HTMLButtonElement): void {
     const enter = () => this.hover(item);
     const leave = () => this.hover(undefined, item);
@@ -722,6 +864,7 @@ export class Constellation {
       if (this.suppressClick) return;
       if (item.skill) this.choose(item);
       else if (item.conversation) this.events.openConversation(item.conversation, target.getBoundingClientRect());
+      else if (item.server) this.pin(item);
     });
     if (item.skill) target.addEventListener('pointerdown', (event) => this.startDrag(item, target, event));
   }
@@ -729,7 +872,14 @@ export class Constellation {
   private hover(item: Item | undefined, leaving?: Item): void {
     if ((leaving && this.hovered !== leaving) || this.drag?.moved) return;
     this.hovered = item;
-    if (item) this.selected = item;
+    if (item && !this.pinned) this.selected = item;
+    this.renderDetail();
+    this.events.wake();
+  }
+
+  /** An MCP server clicked: its detail and buttons stay while the pointer passes other glyphs on its way to them. */
+  private pin(item: Item): void {
+    this.pinned = this.selected = item;
     this.renderDetail();
     this.events.wake();
   }
@@ -815,8 +965,8 @@ export class Constellation {
     // The glyph pointed at, held or picked is named first, then the other glyphs, then the scopes; a name that would
     // overlap one already placed stays hidden. A glyph's name sits under it, a scope's over its star. Zoomed in, there is
     // room for more names, and the filter names what it keeps.
-    const focus = this.drag?.item ?? this.hovered ?? this.highlighted;
-    const labelAll = this.items.filter((item) => item.kind !== 'hub' && item.match > 0).length <= MAX_LABELS * this.zoom * this.zoom;
+    const focus = this.drag?.item ?? this.hovered ?? this.highlighted ?? this.pinned;
+    const labelAll = this.items.filter((item) => item.kind !== 'hub' && item.tag && item.match > 0).length <= MAX_LABELS * this.zoom * this.zoom;
     const rank = (item: Item) => (item === focus ? 3 : item.kind === 'hub' ? 1 : 2);
     const glyphChar = 6.4 * this.labelScale;
     const hubChar = 7.6 * this.labelScale;
@@ -846,9 +996,35 @@ export class Constellation {
       this.sub.textContent = count > 0 ? `${plural(count, 'earlier conversation')} in this workspace, oldest on the left` : '';
       if (count > 0) this.keys.append(key(OLDER, 'Older'), key(SCOPE_COLORS.project, 'Recent'), key(SHARED, 'Same files', 'Joins conversations that read or edited the same files'));
       if (this.history.conversations.some((conversation) => conversation.id === this.conversationId)) this.keys.append(key(PALETTE.claudeCore, 'In Orbit now'));
-      this.refreshButton.disabled = this.history.loading;
+      this.setRefresh('Refresh', undefined, this.history.loading);
       this.empty.textContent =
         count > 0 ? '' : this.history.loading ? 'Reading earlier conversations…' : this.history.error ? `Could not read them: ${this.history.error}` : 'No earlier Claude Code conversations in this workspace yet.';
+    } else if (this.current === 'mcp') {
+      const servers = this.catalog?.mcpServers ?? [];
+      const mcp = this.catalog?.mcp;
+      this.title.textContent = 'MCP servers';
+      this.sub.textContent = mcp?.loading
+        ? 'Starting every MCP server afresh…'
+        : mcp?.error && servers.length > 0
+          ? `Reload failed: ${mcp.error}`
+          : servers.length === 0
+            ? ''
+            : `${plural(servers.length, 'server')} Claude Code loads here${mcp?.checkedAt ? `, checked ${relativeTime(mcp.checkedAt)}` : ''}. Click one to change it.`;
+      for (const group of GROUPS) {
+        const count = servers.filter((server) => groupOf(server.status) === group).length;
+        if (count > 0) this.keys.append(key(MCP_STATUS_COLORS[group], `${GROUP_LABELS[group]} ${count}`, GROUP_TITLES[group]));
+      }
+      this.setRefresh('Reload', 'Start every MCP server afresh, picking up servers added since, and ask how each connected', mcp?.loading === true);
+      this.empty.textContent =
+        servers.length > 0
+          ? ''
+          : mcp?.loading
+            ? 'Starting the MCP servers…'
+            : mcp?.error
+              ? `Claude Code could not be asked: ${mcp.error}`
+              : this.catalog?.loading
+                ? 'Asking Claude Code which MCP servers it loads…'
+                : 'No MCP servers here. Add one with claude mcp add, or in .mcp.json in this workspace, then Reload.';
     } else {
       const skills = this.catalog?.skills ?? [];
       const loading = this.catalog?.loading ?? false;
@@ -863,7 +1039,7 @@ export class Constellation {
         const count = skills.filter((skill) => skill.scope === scope).length;
         if (count > 0) this.keys.append(key(SCOPE_COLORS[scope], `${SCOPE_LABELS[scope]} ${count}`, `Skills from ${SCOPE_WHERE[scope]}`));
       }
-      this.refreshButton.disabled = loading;
+      this.setRefresh('Refresh', undefined, loading);
       this.empty.textContent =
         skills.length > 0
           ? this.filter && this.matches.length === 0
@@ -878,9 +1054,17 @@ export class Constellation {
     this.empty.hidden = this.empty.textContent === '';
   }
 
+  private setRefresh(label: string, title: string | undefined, busy: boolean): void {
+    this.refreshButton.textContent = label;
+    if (title) this.refreshButton.title = title;
+    else this.refreshButton.removeAttribute('title');
+    this.refreshButton.disabled = busy;
+  }
+
   private renderDetail(): void {
-    const item = this.drag?.item ?? this.hovered ?? (this.filter ? this.highlighted : undefined) ?? this.selected;
+    const item = this.drag?.item ?? this.hovered ?? (this.filter ? this.highlighted : undefined) ?? this.pinned ?? this.selected;
     this.detailOpen.hidden = !item?.skill?.file;
+    let server: McpServerInfo | undefined;
     if (item?.skill) {
       const { skill } = item;
       this.detailTitle.textContent = `/${skill.name}`;
@@ -900,15 +1084,55 @@ export class Constellation {
         .filter(Boolean)
         .join(' · ');
       this.detailText.textContent = conversation.prompts[0] ?? '';
+    } else if (item?.server) {
+      // The catalog's latest word on it: a note or a pending action can change without a rebuild.
+      server = this.catalog?.mcpServers.find((candidate) => candidate.name === item.server?.name) ?? item.server;
+      this.detailTitle.textContent = server.name;
+      this.detailMeta.textContent = [
+        statusLabel(server.status),
+        server.scope ? (MCP_SCOPES[server.scope] ?? server.scope) : '',
+        server.transport ? (TRANSPORTS[server.transport] ?? server.transport) : '',
+        server.version ? `v${server.version}` : '',
+        server.tools > 0 ? plural(server.tools, 'tool') : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      this.detailText.textContent = server.note ?? server.error ?? hintFor(server);
     } else if (this.current === 'history') {
       this.detailTitle.textContent = 'Earlier conversations';
       this.detailMeta.textContent = '';
       this.detailText.textContent = 'Each gyroscope is a conversation Claude Code kept for this workspace, sized by its prompts. Click one to open it and continue it.';
+    } else if (this.current === 'mcp') {
+      this.detailTitle.textContent = 'MCP servers';
+      this.detailMeta.textContent = '';
+      this.detailText.textContent =
+        'Each 16-cell is an MCP server, joined to Claude and coloured by how it connected; a connected one has its tools around it. Click one to reconnect it, sign in, or enable or disable it.';
     } else {
       this.detailTitle.textContent = 'Attach a skill';
       this.detailMeta.textContent = '';
       this.detailText.textContent = 'Each tesseract is a skill. Drag one onto the prompt, or click it: Claude Code loads its SKILL.md with what you send. Lines join skills whose instructions name each other.';
     }
+    this.renderActions(server);
+  }
+
+  /** The buttons for the server the detail describes, replaced only when they change, so a click under way is not lost. */
+  private renderActions(server: McpServerInfo | undefined): void {
+    const actions = server ? mcpActionsFor(server) : [];
+    const signature = server ? `${server.name}|${server.pending ?? ''}|${actions.join(',')}` : '';
+    if (signature === this.actionsSignature) return;
+    this.actionsSignature = signature;
+    this.detailActions.replaceChildren(
+      ...actions.map((action) => {
+        const control = button(server?.pending === action ? ACTION_PENDING[action] : ACTION_LABELS[action], 'link-button cd-action', ACTION_TITLES[action]);
+        control.dataset.action = action;
+        control.disabled = server?.pending !== undefined;
+        control.addEventListener('click', () => {
+          if (server) this.events.mcpAction(server.name, action);
+        });
+        return control;
+      }),
+    );
+    this.detailActions.hidden = actions.length === 0;
   }
 
   /** Circle clips centred on the toggle: its own size, and large enough to uncover the whole panel. */
@@ -936,6 +1160,7 @@ function makeItem(spec: {
   tag?: HTMLElement;
   skill?: SkillInfo;
   conversation?: ConversationSummary;
+  server?: McpServerInfo;
   scope?: SkillScope;
 }): Item {
   const [x, y, z] = spec.at;
@@ -955,6 +1180,7 @@ function makeItem(spec: {
     tag: spec.tag,
     skill: spec.skill,
     conversation: spec.conversation,
+    server: spec.server,
     scope: spec.scope,
   };
 }
@@ -977,6 +1203,55 @@ export function skillMatch(skill: SkillInfo, filter: string): number {
     at++;
   }
   return 1;
+}
+
+/** What the MCP view offers for a server, as `/mcp` would; sign-out only where the transport keeps a sign-in (HTTP, SSE). */
+export function mcpActionsFor(server: McpServerInfo): McpAction[] {
+  const remote = server.transport === 'http' || server.transport === 'sse';
+  switch (server.status) {
+    case 'connected':
+      return remote ? ['reconnect', 'signOut', 'disable'] : ['reconnect', 'disable'];
+    case 'needs-auth':
+      return ['signIn', 'disable'];
+    case 'failed':
+      return ['reconnect', 'disable'];
+    case 'pending':
+      return ['disable'];
+    case 'disabled':
+      return ['enable'];
+    default:
+      return ['reconnect'];
+  }
+}
+
+/** Needs sign-in or approval together, and any state Orbit does not know with the disabled ones. */
+function groupOf(status: string): ServerGroup {
+  if (status === 'connected' || status === 'pending' || status === 'failed' || status === 'disabled') return status;
+  return status.startsWith('needs-') ? 'needs-auth' : 'disabled';
+}
+
+function statusLabel(status: string): string {
+  return status === 'needs-auth' ? 'needs sign-in' : status === 'pending' ? 'connecting' : status.replace(/-/g, ' ');
+}
+
+/** The detail line for a server with no note or error: its tools, or what its state asks of the user. */
+function hintFor(server: McpServerInfo): string {
+  switch (groupOf(server.status)) {
+    case 'connected': {
+      const names = server.toolNames ?? [];
+      if (names.length === 0) return server.tools > 0 ? `${plural(server.tools, 'tool')} Claude can use.` : 'Connected, with no tools.';
+      const more = server.tools - names.length;
+      return `Tools: ${names.join(', ')}${more > 0 ? `, and ${more} more` : ''}.`;
+    }
+    case 'pending':
+      return 'Still connecting. Reload asks every server again.';
+    case 'needs-auth':
+      return server.status === 'needs-auth' ? 'Claude cannot use it until you sign in.' : 'Waiting for your approval: run claude in a terminal in this workspace to approve it, then Reload.';
+    case 'failed':
+      return 'It could not connect.';
+    case 'disabled':
+      return server.status === 'disabled' ? 'Disabled in your Claude Code settings: Claude goes without it.' : `Claude Code says it is ${statusLabel(server.status)}.`;
+  }
 }
 
 function key(color: Rgb, text: string, title?: string): HTMLLIElement {

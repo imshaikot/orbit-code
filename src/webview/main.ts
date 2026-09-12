@@ -95,6 +95,8 @@ const session = new SessionPanel(
     answerPermission: (key, id, answer, answers) => host.post({ type: 'permission', key, id, answer, ...(answers ? { answers } : {}) }),
     openFile: (path) => host.post({ type: 'openFile', path }),
     refreshCatalog: () => host.post({ type: 'refreshCatalog' }),
+    reloadMcp: () => host.post({ type: 'reloadMcp' }),
+    mcpAction: (server, action) => host.post({ type: 'mcpAction', server, action }),
     loadHistory: () => host.post({ type: 'loadHistory' }),
     resumeConversation: (id) => host.post({ type: 'resumeConversation', id }),
   },

@@ -41,6 +41,19 @@ export const PALETTE = {
 } as const;
 
 /**
+ * How an MCP server connected, in the MCP view: the lime of an MCP call when connected, cyan-blue while connecting,
+ * amber when it needs the user (sign-in, approval), pink-red when it failed, a dim grey when disabled. Checked in OKLab
+ * against each other: normal vision ΔE ≥ 19, protanopia ≥ 9, deuteranopia ≥ 12.
+ */
+export const MCP_STATUS_COLORS = {
+  connected: PALETTE.mcp,
+  pending: hex('#6fc8ff'),
+  'needs-auth': hex('#ffae42'),
+  failed: hex('#ff5c9a'),
+  disabled: hex('#5f6782'),
+} as const;
+
+/**
  * Where a skill comes from, in the skill constellation: this workspace, the user's own skills, a plugin. Checked in
  * OKLab against each other: normal vision ΔE ≥ 19, protanopia ≥ 13, deuteranopia ≥ 8.
  */

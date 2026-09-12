@@ -3,7 +3,7 @@ import { button, el } from './dom';
 import { EffortMeter } from './effortMeter';
 import { dollars, fileName } from './turns';
 
-export type DrawerToggle = 'skills' | 'history';
+export type DrawerToggle = 'skills' | 'history' | 'mcp';
 
 export interface DrawerActions {
   /** Sends the prompt with the attached skills and files; false if it could not be sent. `from` is where the typed text sat, for the launch animation. */
@@ -11,7 +11,7 @@ export interface DrawerActions {
   setOptions(options: Partial<SessionOptions>): void;
   newSession(): void;
   viewConversation(): void;
-  /** A toggle in the composer bar was pressed: show or hide that panel. */
+  /** A toggle in the composer bar, or the MCP button, was pressed: show or hide that panel. */
   toggle(kind: DrawerToggle, from: DOMRect): void;
   /** Files was pressed: the host's open dialog picks files to attach. */
   pickFiles(): void;
@@ -76,7 +76,9 @@ export class PromptDrawer {
   private readonly skillsToggle = button('', 'composer-toggle', 'Skills Claude Code offers here: drag one onto the prompt to attach it');
   private readonly historyToggle = button('', 'composer-toggle', 'Earlier conversations of this workspace');
   private readonly filesToggle = button('', 'composer-toggle', 'Attach files for Claude to read with the prompt');
-  private readonly mcp = el('span', 'sheet-mcp');
+  /** Top right of the sheet: the MCP servers, wearing the state that most needs the user. */
+  private readonly mcpToggle = button('', 'composer-toggle sheet-mcp');
+  private readonly mcpCount = el('span', 'sheet-mcp-count');
   /** Where the skill and history panels open, on the sheet's top edge. */
   readonly overlay = el('div', 'drawer-overlay');
   private attached: string[] = [];
@@ -106,8 +108,7 @@ export class PromptDrawer {
     this.grabber.setAttribute('aria-label', 'Close');
 
     const context = el('p', 'sheet-context');
-    context.append(this.contextText, this.mcp, this.view, this.startNew);
-    this.mcp.hidden = true;
+    context.append(this.contextText, this.view, this.startNew);
 
     const form = this.form;
     this.input.rows = 1;
@@ -136,11 +137,19 @@ export class PromptDrawer {
     clip.setAttribute('aria-hidden', 'true');
     this.filesToggle.append(clip, 'Files');
     this.filesToggle.addEventListener('click', () => actions.pickFiles());
+    this.mcpToggle.dataset.kind = 'mcp';
+    this.mcpToggle.dataset.state = 'none';
+    this.mcpToggle.setAttribute('aria-pressed', 'false');
+    this.mcpToggle.title = 'MCP servers Claude Code loads here';
+    const station = el('span', 'composer-toggle-icon composer-toggle-mcp');
+    station.setAttribute('aria-hidden', 'true');
+    this.mcpToggle.append(station, 'MCP', this.mcpCount);
+    this.mcpToggle.addEventListener('click', () => actions.toggle('mcp', this.mcpToggle.getBoundingClientRect()));
     const bar = el('div', 'composer-bar');
     bar.append(this.filesToggle, this.skillsToggle, this.historyToggle, this.model, this.effort.element, this.mode, this.action);
     form.append(this.chips, this.input, bar);
 
-    this.sheet.append(this.grabber, context, form);
+    this.sheet.append(this.grabber, this.mcpToggle, context, form);
     this.root.append(this.overlay, this.sheet, this.tab);
     host.append(this.root);
     this.setOpen(false);
@@ -249,7 +258,7 @@ export class PromptDrawer {
     this.refreshAction();
   }
 
-  /** Models from Claude Code itself, and a line on its MCP servers. Attached skills it no longer offers are dropped. */
+  /** Models from Claude Code itself, and the MCP button's summary of its servers. Attached skills it no longer offers are dropped. */
   setCatalog(catalog: AgentCatalog): void {
     this.catalog = catalog;
     this.syncModels();
@@ -260,10 +269,18 @@ export class PromptDrawer {
       count('needs-auth') > 0 ? `${count('needs-auth')} need sign-in` : '',
       count('failed') > 0 ? `${count('failed')} failed` : '',
       count('pending') > 0 ? `${count('pending')} connecting` : '',
+      count('disabled') > 0 ? `${count('disabled')} disabled` : '',
     ].filter(Boolean);
-    this.mcp.hidden = servers.length === 0;
-    this.mcp.textContent = `MCP: ${parts.join(', ') || `${servers.length} servers`}`;
-    this.mcp.title = servers.map((server) => `${server.name}: ${server.status}${server.tools > 0 ? `, ${server.tools} tools` : ''}`).join('\n');
+    const summary = servers.length === 0 ? 'none found yet' : parts.join(', ') || `${servers.length} servers`;
+    // The button wears the state that most needs the user.
+    this.mcpToggle.dataset.state =
+      count('failed') > 0 ? 'failed' : count('needs-auth') > 0 ? 'needs-auth' : count('pending') > 0 || catalog.mcp?.loading ? 'pending' : count('connected') > 0 ? 'connected' : 'none';
+    this.mcpCount.textContent = servers.length > 0 ? `${count('connected')}/${servers.length}` : '';
+    this.mcpToggle.setAttribute('aria-label', `MCP servers: ${summary}`);
+    this.mcpToggle.title = [
+      `MCP servers: ${summary}. Click to see them, reload them, and sign in, reconnect, enable or disable one.`,
+      ...servers.map((server) => `${server.name}: ${server.status}${server.tools > 0 ? `, ${server.tools} tools` : ''}`),
+    ].join('\n');
     const offered = new Set(catalog.skills.map((skill) => skill.name));
     if (catalog.known && this.attached.some((name) => !offered.has(name))) {
       this.attached = this.attached.filter((name) => offered.has(name));
@@ -271,9 +288,9 @@ export class PromptDrawer {
     }
   }
 
-  /** Which toggle in the composer bar is on. */
+  /** Which toggle in the composer bar, or the MCP button, is on. */
   setToggled(kind: DrawerToggle | undefined): void {
-    for (const toggle of [this.skillsToggle, this.historyToggle]) toggle.setAttribute('aria-pressed', String(toggle.dataset.kind === kind));
+    for (const toggle of [this.skillsToggle, this.historyToggle, this.mcpToggle]) toggle.setAttribute('aria-pressed', String(toggle.dataset.kind === kind));
   }
 
   /** Attaches a skill to the prompt: it pops into the row above the input. A slash command being typed is what it stands for, so that goes. */
