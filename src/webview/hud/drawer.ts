@@ -1,5 +1,6 @@
 import type { AgentCatalog, PermissionMode, SessionOptions, SessionState } from '../../shared/protocol';
 import { button, el } from './dom';
+import { EffortMeter } from './effortMeter';
 import { dollars } from './turns';
 
 export type DrawerToggle = 'skills' | 'history';
@@ -64,6 +65,7 @@ export class PromptDrawer {
   private readonly input = el('textarea', 'composer-input');
   private readonly model = el('select', 'composer-select');
   private readonly mode = el('select', 'composer-select');
+  private readonly effort = new EffortMeter((effort) => this.actions.setOptions({ effort }));
   private readonly action = el('button', 'button primary composer-action', 'Send');
   private readonly form = el('form', 'composer');
   private readonly chips = el('div', 'composer-skills');
@@ -123,7 +125,7 @@ export class PromptDrawer {
       toggle.addEventListener('click', () => actions.toggle(kind, toggle.getBoundingClientRect()));
     }
     const bar = el('div', 'composer-bar');
-    bar.append(this.skillsToggle, this.historyToggle, this.model, this.mode, this.action);
+    bar.append(this.skillsToggle, this.historyToggle, this.model, this.effort.element, this.mode, this.action);
     form.append(this.chips, this.input, bar);
 
     this.sheet.append(this.grabber, context, form);
@@ -208,6 +210,7 @@ export class PromptDrawer {
     const { phase } = state;
     this.tab.dataset.phase = phase;
     this.input.disabled = this.model.disabled = this.mode.disabled = phase === 'unavailable';
+    this.effort.setDisabled(phase === 'unavailable');
     this.syncModels();
     const modes = PICKABLE_MODES.includes(state.options.permissionMode) ? PICKABLE_MODES : [...PICKABLE_MODES, state.options.permissionMode];
     syncSelect(
@@ -389,11 +392,13 @@ export class PromptDrawer {
     this.action.disabled = !this.state || this.state.phase === 'unavailable' || (this.input.value.trim() === '' && this.attached.length === 0);
   }
 
-  /** The models Claude Code offers, else the fallback aliases; a setting naming another model is listed too. */
+  /** The models Claude Code offers, else the fallback aliases; a setting naming another model is listed too. The effort meter offers what the selected model takes. */
   private syncModels(): void {
     const offered = this.catalog?.known && this.catalog.models.length > 0 ? this.catalog.models.map((model) => [model.value, model.label] as const) : FALLBACK_MODELS;
     syncSelect(this.model, offered, this.state?.options.model ?? '');
-    this.model.title = this.catalog?.models.find((model) => model.value === this.model.value)?.description ?? 'Model';
+    const choice = this.catalog?.known ? this.catalog.models.find((model) => model.value === this.model.value) : undefined;
+    this.model.title = choice?.description ?? 'Model';
+    this.effort.set(this.state?.options.effort ?? '', choice?.label ?? this.model.value, choice?.efforts);
   }
 
   private renderChips(): void {

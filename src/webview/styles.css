@@ -535,6 +535,180 @@ select:focus-visible {
   font-size: 12.5px;
 }
 
+/* ── Effort meter ───────────────────────────────────────────── */
+
+/* A ring for Claude Code's default, then five bars rising and warming from blue-violet to rose toward max. */
+.composer-effort {
+  --effort: rgba(214, 222, 255, 0.62);
+  --effort-glow: rgba(165, 139, 255, 0);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 10px 2px 7px;
+  font-size: 11.5px;
+  background: rgba(10, 16, 36, 0.9);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  transition:
+    border-color 160ms ease,
+    box-shadow 320ms ease;
+}
+
+.composer-effort:hover {
+  border-color: var(--rule-strong);
+}
+
+.composer-effort:focus-within {
+  border-color: rgba(187, 168, 255, 0.55);
+}
+
+.composer-effort[data-level='low'] {
+  --effort: #8ea2ff;
+  --effort-glow: rgba(142, 162, 255, 0.3);
+}
+
+.composer-effort[data-level='medium'] {
+  --effort: #a58bff;
+  --effort-glow: rgba(165, 139, 255, 0.42);
+}
+
+.composer-effort[data-level='high'] {
+  --effort: #c083ff;
+  --effort-glow: rgba(192, 131, 255, 0.52);
+}
+
+.composer-effort[data-level='xhigh'] {
+  --effort: #de7cf5;
+  --effort-glow: rgba(222, 124, 245, 0.6);
+}
+
+.composer-effort[data-level='max'] {
+  --effort: #ff8fd6;
+  --effort-glow: rgba(255, 143, 214, 0.72);
+  box-shadow: 0 0 16px rgba(255, 143, 214, 0.16);
+}
+
+.effort-auto,
+.effort-bar {
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.effort-auto {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px rgba(214, 222, 255, 0.3);
+  transition:
+    background 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.effort-auto:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1.5px rgba(214, 222, 255, 0.6);
+}
+
+.effort-auto[data-lit='true'] {
+  background: radial-gradient(circle, rgba(240, 236, 255, 0.95) 0 24%, rgba(165, 139, 255, 0.4) 34%, transparent 72%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(214, 205, 255, 0.85),
+    0 0 8px rgba(165, 139, 255, 0.45);
+}
+
+.effort-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 17px;
+}
+
+.effort-bar {
+  width: 5px;
+  height: calc(6px + var(--i) * 2.75px);
+  border-radius: 2px;
+  background: rgba(214, 222, 255, 0.14);
+  transform-origin: 50% 100%;
+  /* Lighting sweeps up the bars, one after another. */
+  transition:
+    background 180ms ease calc(var(--i) * 40ms),
+    box-shadow 240ms ease calc(var(--i) * 40ms),
+    opacity 160ms ease;
+}
+
+.effort-bar[data-lit='false']:hover:not(:disabled) {
+  background: rgba(214, 222, 255, 0.3);
+}
+
+.effort-bar[data-lit='true']:hover:not(:disabled) {
+  filter: brightness(1.25);
+}
+
+.effort-bar[data-lit='true'] {
+  background: var(--effort);
+  box-shadow: 0 0 7px var(--effort-glow);
+}
+
+.composer-effort[data-previewing='true'] .effort-bar[data-lit='true'] {
+  opacity: 0.72;
+}
+
+.effort-auto:disabled,
+.effort-bar:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.effort-auto:focus-visible,
+.effort-bar:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: 2px;
+}
+
+/* The level names sit in one cell, so the meter is as wide as the longest and a hover never shifts what follows it. */
+.effort-label {
+  display: grid;
+  white-space: nowrap;
+}
+
+.effort-name {
+  grid-area: 1 / 1;
+  visibility: hidden;
+  color: var(--effort);
+  transition: color 200ms ease;
+}
+
+.effort-name[data-shown='true'] {
+  visibility: visible;
+}
+
+.effort-name[data-key='none'],
+.composer-effort[data-offered='false'] .effort-name {
+  display: none;
+}
+
+.composer-effort[data-offered='false'] .effort-name[data-key='none'] {
+  display: block;
+  color: var(--ink-faint);
+}
+
+/* At max the lit bars surge in a wave, only while the composer is open. */
+.drawer[data-open='true'] .composer-effort[data-level='max'][data-previewing='false'] .effort-bar[data-lit='true'] {
+  animation: effort-surge 1.8s ease-in-out calc(var(--i) * 140ms) infinite;
+}
+
+@keyframes effort-surge {
+  0%,
+  100% {
+    filter: none;
+  }
+  40% {
+    filter: brightness(1.45);
+    box-shadow: 0 0 12px var(--effort-glow);
+  }
+}
+
 /* ── Composer toggles and attached skills ───────────────────── */
 
 .composer-toggle {
