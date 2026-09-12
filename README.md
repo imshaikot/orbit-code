@@ -1,0 +1,47 @@
+# Orbit Code
+
+Your codebase as a 3D dependency graph, with Claude Code working through it live. This repository holds the VS Code extension and the editor-agnostic packages it is built from.
+
+- **Use it in VS Code:** [apps/vscode/README.md](apps/vscode/README.md)
+- **Index a repository from the command line:** [packages/indexer/README.md](packages/indexer/README.md)
+
+## Layout
+
+| Path | Package | What it is |
+| --- | --- | --- |
+| `apps/vscode` | `orbit-code` | The VS Code extension, packaged as a `.vsix` for the Marketplace and Open VSX |
+| `packages/protocol` | `@orbit-code/protocol` | The messages between a host, the webview and the workers |
+| `packages/graph` | `@orbit-code/graph` | File kinds, the columnar graph, the directory tree, layout extension |
+| `packages/common` | `@orbit-code/common` | Events, disposables, logging and batching, for any host |
+| `packages/indexer` | `@orbit-code/indexer` | Workspace to dependency graph, as a worker thread and a CLI; published to npm |
+| `packages/agent` | `@orbit-code/agent` | Claude Code conversations over the `claude` CLI |
+| `packages/core` | `@orbit-code/core` | The editor-agnostic host: the graph, live updates, Claude's activity |
+| `packages/webview` | `@orbit-code/webview` | The UI: the three.js scene and the HUD |
+| `tools/harness` | `@orbit-code/harness` | Headless Chrome checks of the webview against a simulated host |
+
+Each project is tagged with the runtime its code needs (neutral, node, browser or vscode), and `yarn boundaries` keeps every import within those lines. Only `apps/vscode` touches the VS Code API, so a host for another editor can reuse the engine, the protocol and the webview.
+
+## Development
+
+```sh
+yarn install
+yarn build            # every project, through Nx
+yarn typecheck
+yarn boundaries
+yarn self             # build and open this repository in an Extension Development Host (or press F5)
+yarn watch            # rebuild on change
+yarn harness          # webview checks in headless Chrome
+yarn smoke            # end-to-end in a real VS Code
+yarn package          # dist/apps/vscode/orbit-code-<version>.vsix
+yarn nx graph         # the project graph
+```
+
+Nx 23 runs and caches the tasks; Yarn 4 workspaces link the packages, which import each other's sources directly.
+
+## Releases
+
+Record a change worth releasing with `yarn nx release plan <bump> --projects=<project>`, and commit the plan with it. `yarn nx release --skip-publish` then applies the plans: it bumps versions, writes each project's `CHANGELOG.md`, commits and tags, `v<version>` for the extension and `<project>-v<version>` for an npm package. Pushing a tag runs `.github/workflows/release.yml`, which publishes that release.
+
+## License
+
+MIT

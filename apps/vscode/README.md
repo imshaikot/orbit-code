@@ -56,15 +56,18 @@ Claude only runs in trusted workspaces. Your own Claude Code settings, `CLAUDE.m
 
 ## Development
 
+The extension is `apps/vscode` in the Orbit Code monorepo, built from its packages with Nx. From the repository root:
+
 ```sh
-yarn self        # build and open this repo in an Extension Development Host (or press F5)
+yarn self        # build and open the repository in an Extension Development Host (or press F5)
 yarn watch       # rebuild on change
 yarn typecheck
 yarn harness     # webview checks in headless Chrome
 yarn smoke       # end-to-end in a real VS Code
+yarn package     # a production .vsix in dist/apps/vscode/
 ```
 
-CI (`.github/workflows/ci.yml`) runs typecheck, build and an index of this repository on every push to `main` and pull request, then packages a `.vsix` and runs smoke and harness; the harness report and screenshots are an artifact to read. Pushing a `v<version>` tag matching `package.json` attaches the `.vsix` to a GitHub release.
+CI (`.github/workflows/ci.yml`) runs typecheck, build, the package boundary check and an index of the repository on every push to `main` and pull request, then packages a `.vsix` and runs smoke and harness; the harness report and screenshots are an artifact to read. Releases come from Nx Release: a `v<version>` tag attaches the `.vsix` to a GitHub release, and publishes it to the Marketplace and Open VSX once their tokens are set.
 
 Architecture notes are in `CLAUDE.md`.
 
