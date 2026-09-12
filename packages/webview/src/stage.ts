@@ -3,12 +3,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { PALETTE } from './palette';
 
 const PIXEL_RATIOS = [2, 1.5, 1];
-/**
- * How far the camera may swing around the plane the bubbles sit on: sideways, and above or below. Kept short of edge-on
- * and of the back, where the picture would collapse into a line or come out mirrored.
- */
-const MAX_AZIMUTH = THREE.MathUtils.degToRad(65);
-const MAX_TILT = THREE.MathUtils.degToRad(55);
 const SLOW_FRAME_MS = 45;
 const SLOW_FRAMES_BEFORE_DEGRADE = 45;
 
@@ -46,10 +40,8 @@ export class Stage {
     this.controls.screenSpacePanning = true;
     // The wheel is SmoothZoom's (zoom.ts): eased over frames and toward the pointer, so zooming in on a bubble opens it (focus.ts).
     this.controls.enableZoom = false;
-    this.controls.minAzimuthAngle = -MAX_AZIMUTH;
-    this.controls.maxAzimuthAngle = MAX_AZIMUTH;
-    this.controls.minPolarAngle = Math.PI / 2 - MAX_TILT;
-    this.controls.maxPolarAngle = Math.PI / 2 + MAX_TILT;
+    // The orbit is free all the way around: every file, bubble, star and label is camera-facing, and a click's camera
+    // move (focus.ts) keeps the direction the camera already has, so the graph reads from any side.
 
     new ResizeObserver(() => this.resize(host, true)).observe(host);
     this.resize(host, false);
