@@ -4,6 +4,8 @@ import type { Stage } from './stage';
 import type { World } from './world';
 
 const CLICK_SLOP_PX = 5;
+/** While the camera glides (a zoom, damping), what is under the pointer is looked up again at most this often. */
+const MOTION_PICK_MS = 80;
 
 export interface InteractionView {
   showTooltip(x: number, y: number, title: string, detail: string): void;
@@ -41,6 +43,9 @@ export class Interaction {
   private pressedAt: { x: number; y: number } | undefined;
   /** The button is down and the pointer has moved: the camera is being dragged, and nothing is hovered until it is let go. */
   private dragging = false;
+  /** The camera moved under a still pointer: pick again once MOTION_PICK_MS have passed since the last pick. */
+  private motionPickWanted = false;
+  private lastPickAt = 0;
   private last: LastPick | undefined;
   /** Picks run one after another; the picker takes one at a time. */
   private queue: Promise<unknown> = Promise.resolve();
@@ -115,8 +120,13 @@ export class Interaction {
 
   /** Runs after each rendered frame and starts at most one hover pick. True while one is still wanted, so the frame loop keeps pace. */
   afterFrame(): boolean {
+    if (this.motionPickWanted && this.pointer && !this.dragging && performance.now() - this.lastPickAt >= MOTION_PICK_MS) {
+      this.motionPickWanted = false;
+      this.hoverRequested = true;
+    }
     if (this.hoverRequested && this.pointer && this.inFlight === 0) {
       this.hoverRequested = false;
+      this.lastPickAt = performance.now();
       void this.pickAt(this.pointer.x, this.pointer.y, 'hover');
     }
     return this.hoverRequested || this.inFlight > 0;
@@ -126,6 +136,17 @@ export class Interaction {
   worldReplaced(): void {
     this.hoverRequested = this.pointer !== undefined;
     this.view.wake();
+  }
+
+  /** The camera moved under a still pointer (a zoom, damping, a directory opened by the zoom): what is under it may have changed. */
+  cameraMoved(): void {
+    if (this.pointer && !this.dragging) this.motionPickWanted = true;
+  }
+
+  /** The directory bubble the pointer is over, from the latest pick over the current World, or undefined. */
+  hoveredCluster(): number | undefined {
+    const last = this.last;
+    return this.pointer && last && last.world === this.world() && last.picked.kind === 'cluster' ? last.picked.index : undefined;
   }
 
   /** Back out to the directory around the one in view. */

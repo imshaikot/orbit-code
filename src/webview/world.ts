@@ -372,6 +372,11 @@ export class World {
     return this.nodePosition(node);
   }
 
+  /** A directory's bubble, which the camera frames and zooming draws to the middle of the screen. */
+  bubbleOf(cluster: number): Sphere | undefined {
+    return cluster >= 0 && cluster < this.clusterCount && this.view.shown[cluster] ? this.spheres[cluster] : undefined;
+  }
+
   /** Frames a directory's bubble. Zooming in to it opens it, and zooming out to it backs out of the one on screen. */
   goTo(cluster: number): void {
     if (cluster < 0 || cluster >= this.clusterCount || !this.view.shown[cluster]) return;

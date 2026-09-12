@@ -44,8 +44,8 @@ export class Stage {
     this.controls.rotateSpeed = 0.6;
     this.controls.zoomSpeed = 0.9;
     this.controls.screenSpacePanning = true;
-    // Scrolling zooms toward the pointer, so zooming in on a bubble opens that directory (focus.ts).
-    this.controls.zoomToCursor = true;
+    // The wheel is SmoothZoom's (zoom.ts): eased over frames and toward the pointer, so zooming in on a bubble opens it (focus.ts).
+    this.controls.enableZoom = false;
     this.controls.minAzimuthAngle = -MAX_AZIMUTH;
     this.controls.maxAzimuthAngle = MAX_AZIMUTH;
     this.controls.minPolarAngle = Math.PI / 2 - MAX_TILT;

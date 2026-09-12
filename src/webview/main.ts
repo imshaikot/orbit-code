@@ -25,6 +25,7 @@ import { SceneController } from './scene';
 import { Stage } from './stage';
 import css from './styles.css';
 import type { World } from './world';
+import { SmoothZoom } from './zoom';
 
 const host = new HostBridge();
 const nonce = injectStyles();
@@ -151,6 +152,7 @@ const scene = new SceneController(stage, host, {
     fileMenu.close();
     sparkPopup.close();
     followTween = undefined;
+    zoom.cancel();
     identity.setLocation(undefined);
   },
   worldReady: (world) => {
@@ -183,6 +185,17 @@ const interaction = new Interaction(stage, picker, () => scene.world, {
   relabel,
 });
 
+// The wheel: eased over frames, toward the pointer, and drawing the bubble under it to the middle of the screen.
+const zoom = new SmoothZoom(stage.renderer.domElement, stage.camera, stage.controls, {
+  anchor: () => {
+    const world = scene.world;
+    const cluster = interaction.hoveredCluster();
+    return world && cluster !== undefined ? world.bubbleOf(cluster) : undefined;
+  },
+  allowed: () => scene.world !== undefined && !scene.world.focus.animating,
+  wake: loop.wake,
+});
+
 stage.controls.addEventListener('change', relabel);
 
 (window as unknown as { __orbit: unknown }).__orbit = {
@@ -191,6 +204,7 @@ stage.controls.addEventListener('change', relabel);
   constellation: () => session.constellationState,
   editor: () => editor.debugState(),
   fileMenu: () => ({ open: fileMenu.isOpen, path: fileMenu.path, busy: fileMenu.busy }),
+  camera: () => ({ position: stage.camera.position.toArray(), target: stage.controls.target.toArray(), distance: stage.camera.position.distanceTo(stage.controls.target) }),
   project: (x: number, y: number, z: number) => {
     const v = new THREE.Vector3(x, y, z).project(stage.camera);
     return { x: (v.x * 0.5 + 0.5) * stage.width, y: (-v.y * 0.5 + 0.5) * stage.height, depth: v.z };
@@ -236,10 +250,11 @@ function frame({ now, dt, resumed }: FrameSample): Pace {
   // The eye follows the camera: a move in progress, a drag or a wheel, and what the pointer is over.
   let smooth = world.focus.animating;
   let keepGoing = world.update(dt, now) || constellationOpen;
-  // Zooming opens and leaves directories by itself; the path follows.
+  // Zooming opens and leaves directories by itself; the path follows, and what is under the pointer changes.
   if (world.focus.consumeChanged()) {
     identity.setLocation(world.location());
     labelsDirty = true;
+    interaction.cameraMoved();
     if (!fileMenu.busy) fileMenu.close();
   }
   if (followSpark(world, now, dt)) {
@@ -247,11 +262,21 @@ function frame({ now, dt, resumed }: FrameSample): Pace {
     keepGoing = true;
     smooth = true;
   }
+  // A click's camera move takes over from the wheel.
+  if (world.focus.animating) zoom.cancel();
+  else if (zoom.update(dt)) {
+    labelsDirty = true;
+    keepGoing = true;
+    smooth = true;
+    interaction.cameraMoved();
+  }
   if (!world.focus.animating && stage.controls.update()) {
     labelsDirty = true;
     keepGoing = true;
     smooth = true;
+    interaction.cameraMoved();
   }
+  if (zoom.active) keepGoing = smooth = true;
   stage.renderer.render(stage.scene, stage.camera);
   const { calls, triangles } = stage.renderer.info.render; // read before the pick pass resets it
   if (fileMenu.isOpen) placeFileMenu(world);
