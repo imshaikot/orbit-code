@@ -173,8 +173,9 @@ export class SessionService implements vscode.Disposable {
     }
   }
 
-  answerPermission(key: string, id: string, answer: PermissionAnswer): void {
-    this.find(key)?.answerPermission(id, answer);
+  /** `answers`: for a request asking questions, unchecked; the conversation checks them against the request. */
+  answerPermission(key: string, id: string, answer: PermissionAnswer, answers?: unknown): void {
+    this.find(key)?.answerPermission(id, answer, answers);
   }
 
   /** Options apply from the next prompt of any conversation; a running process is then restarted and resumes its conversation. */

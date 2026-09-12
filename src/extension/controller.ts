@@ -193,6 +193,15 @@ export class OrbitController implements vscode.Disposable {
     // With Orbit out of sight, a permission request would stall the turn unnoticed.
     if (request && !this.notifiedPermissions.has(`${state.key}/${request.id}`) && !this.panel?.visible) {
       this.notifiedPermissions.add(`${state.key}/${request.id}`);
+      if (request.questions) {
+        // Questions are answered on the card, which a notification can't hold: open Orbit, or let Claude go on without them.
+        const asked = request.questions.length === 1 ? request.questions[0].question : `${request.questions.length} questions`;
+        void vscode.window.showWarningMessage(`Claude asks: ${asked}`, 'Open Orbit', 'Skip').then((choice) => {
+          if (choice === 'Open Orbit') this.show();
+          else if (choice === 'Skip') this.session.answerPermission(state.key, request.id, 'deny');
+        });
+        return;
+      }
       const choices = request.always ? ['Allow', request.always, 'Deny'] : ['Allow', 'Deny'];
       void vscode.window.showWarningMessage(`Claude wants to use ${request.tool}: ${request.detail}`, ...choices).then((choice) => {
         if (choice) this.session.answerPermission(state.key, request.id, choice === 'Allow' ? 'allow' : choice === 'Deny' ? 'deny' : 'always');
@@ -239,7 +248,7 @@ export class OrbitController implements vscode.Disposable {
         this.setOptions(message.options);
         break;
       case 'permission':
-        if (typeof message.key === 'string' && typeof message.id === 'string' && PERMISSION_ANSWERS.includes(message.answer)) this.session.answerPermission(message.key, message.id, message.answer);
+        if (typeof message.key === 'string' && typeof message.id === 'string' && PERMISSION_ANSWERS.includes(message.answer)) this.session.answerPermission(message.key, message.id, message.answer, message.answers);
         break;
       case 'openFile':
         void this.openFile(message.path);

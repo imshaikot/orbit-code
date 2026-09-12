@@ -2,10 +2,13 @@ import * as vscode from 'vscode';
 import type { PermissionAnswer, PermissionRequest, SessionOptions, SessionPhase, SessionState } from '../../shared/protocol';
 import type { AgentExit, AgentProcess, SessionBackend } from './backend';
 import { type PermissionUpdate, describeAlways } from './permissions';
+import { checkAnswers, describeAnswers, parseQuestions } from './questions';
 import type { AgentEvent } from './streamJson';
 import { summarizeTool } from './tools';
 
 const INTERRUPT_GRACE_MS = 5000;
+/** Why a skipped AskUserQuestion call returned nothing, as Claude reads it. */
+const SKIPPED_MESSAGE = 'The user skipped these questions in Orbit.';
 
 export type TurnOutcome = 'done' | 'interrupted' | 'failed';
 
@@ -88,7 +91,13 @@ export class Conversation {
       options: { ...this.context.options() },
       turns: this.turns,
       costUsd: this.costUsd,
-      permission: permission && { id: permission.id, tool: permission.tool, detail: permission.detail, ...(permission.always ? { always: permission.always } : {}) },
+      permission: permission && {
+        id: permission.id,
+        tool: permission.tool,
+        detail: permission.detail,
+        ...(permission.always ? { always: permission.always } : {}),
+        ...(permission.questions ? { questions: permission.questions } : {}),
+      },
     };
   }
 
@@ -145,10 +154,28 @@ export class Conversation {
     this.emitState();
   }
 
-  /** `always` is taken as a plain allow when the request offered no such choice. */
-  answerPermission(id: string, answer: PermissionAnswer): void {
+  /**
+   * `always` is taken as a plain allow when the request offered no such choice. A request asking questions
+   * (AskUserQuestion) takes `answers`, one for every question, and is left waiting without them; `deny` skips it.
+   */
+  answerPermission(id: string, answer: PermissionAnswer, answers?: unknown): void {
     const request = this.permission;
     if (!request || request.id !== id || !this.agent) return;
+    if (request.questions) {
+      const checked = answer === 'deny' ? undefined : checkAnswers(request.questions, answers);
+      if (answer !== 'deny' && !checked) return;
+      this.permission = undefined;
+      if (checked) {
+        this.agent.answerPermission(id, 'allow', { ...request.input, answers: checked }, []);
+        this.context.log.info(`answered ${request.tool}: ${request.questions.length} ${request.questions.length === 1 ? 'question' : 'questions'}`);
+        this.sink.event(this, { type: 'notice', level: 'info', text: `You answered: ${describeAnswers(request.questions, checked)}` });
+      } else {
+        this.agent.answerPermission(id, 'deny', request.input, [], SKIPPED_MESSAGE);
+        this.context.log.info(`skipped ${request.tool}`);
+      }
+      this.emitState();
+      return;
+    }
     this.permission = undefined;
     const always = answer === 'always' && request.always !== undefined;
     this.agent.answerPermission(id, always ? 'always' : answer === 'deny' ? 'deny' : 'allow', request.input, request.suggestions);
@@ -243,8 +270,9 @@ export class Conversation {
         break;
       case 'permissionRequest': {
         const detail = summarizeTool(event.tool, event.input).detail || event.description || '';
-        const always = describeAlways(event.suggestions);
-        this.permission = { id: event.requestId, tool: event.tool, detail, ...(always ? { always } : {}), input: event.input, suggestions: event.suggestions };
+        const questions = parseQuestions(event.tool, event.input);
+        const always = questions ? undefined : describeAlways(event.suggestions);
+        this.permission = { id: event.requestId, tool: event.tool, detail, ...(always ? { always } : {}), ...(questions ? { questions } : {}), input: event.input, suggestions: event.suggestions };
         this.emitState();
         break;
       }

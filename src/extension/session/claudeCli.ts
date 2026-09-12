@@ -208,7 +208,7 @@ class ClaudeCliProcess implements AgentProcess {
     this.write({ type: 'control_request', request_id: `orbit-interrupt-${++this.requests}`, request: { subtype: 'interrupt' } });
   }
 
-  answerPermission(requestId: string, answer: PermissionAnswer, input: Record<string, unknown>, suggestions: readonly PermissionUpdate[]): void {
+  answerPermission(requestId: string, answer: PermissionAnswer, input: Record<string, unknown>, suggestions: readonly PermissionUpdate[], message?: string): void {
     // `always` sends the CLI's own suggestions back as updatedPermissions: it then applies them as a terminal's
     // "don't ask again" would (a rule written to settings, edits accepted for the session, a directory added).
     const response: AgentInput & { type: 'control_response' } = {
@@ -218,7 +218,7 @@ class ClaudeCliProcess implements AgentProcess {
         request_id: requestId,
         response:
           answer === 'deny'
-            ? { behavior: 'deny', message: 'The user denied this tool call in Orbit.', decisionClassification: 'user_reject' }
+            ? { behavior: 'deny', message: message ?? 'The user denied this tool call in Orbit.', decisionClassification: 'user_reject' }
             : answer === 'always' && suggestions.length > 0
               ? { behavior: 'allow', updatedInput: input, updatedPermissions: [...suggestions], decisionClassification: 'user_permanent' }
               : { behavior: 'allow', updatedInput: input, decisionClassification: 'user_temporary' },

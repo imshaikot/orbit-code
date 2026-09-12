@@ -49,9 +49,10 @@ export interface AgentProcess {
   interrupt(): void;
   /**
    * Answers a `permissionRequest`. `always` allows and hands back the request's `suggestions` as the permissions to
-   * apply from now on (the agent's own "don't ask again"); `input` is the request's, echoed with an allow.
+   * apply from now on (the agent's own "don't ask again"); `input` is the request's, echoed with an allow. `message`
+   * replaces what a deny tells the agent.
    */
-  answerPermission(requestId: string, answer: PermissionAnswer, input: Record<string, unknown>, suggestions: readonly PermissionUpdate[]): void;
+  answerPermission(requestId: string, answer: PermissionAnswer, input: Record<string, unknown>, suggestions: readonly PermissionUpdate[], message?: string): void;
   dispose(): void;
 }
 

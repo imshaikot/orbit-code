@@ -235,6 +235,24 @@ export interface PermissionRequest {
    * session", "Always allow in this project"); absent when it offers none.
    */
   always?: string;
+  /** Claude's questions (AskUserQuestion): answered with an answer to each instead of Allow, skipped with Deny. */
+  questions?: Question[];
+}
+
+/** One question of an AskUserQuestion call. */
+export interface Question {
+  /** The question as Claude asked it; answers are keyed by it. */
+  question: string;
+  /** A short label for it ("Scope"). */
+  header?: string;
+  options: QuestionOption[];
+  /** More than one option may be picked. */
+  multiSelect: boolean;
+}
+
+export interface QuestionOption {
+  label: string;
+  description?: string;
 }
 
 /** What the agent offers in this workspace, asked of it without starting a conversation. */
@@ -340,7 +358,8 @@ export type WebviewToHost =
   /** An id from the last `history` message; the next prompt resumes that conversation. */
   | { type: 'resumeConversation'; id: string }
   | { type: 'sessionOptions'; options: Partial<SessionOptions> }
-  | { type: 'permission'; key: string; id: string; answer: PermissionAnswer }
+  /** `answers`: for a request with `questions`, the answer to each by question text; the host checks them against the request. */
+  | { type: 'permission'; key: string; id: string; answer: PermissionAnswer; answers?: Record<string, string> }
   /** Workspace-relative; the host refuses anything outside the workspace. */
   | { type: 'openFile'; path: string }
   /** Something done to one graph file from the file menu or the editor sheet; `path` is its id. Answered by a `file` reply with the same `id`. */
