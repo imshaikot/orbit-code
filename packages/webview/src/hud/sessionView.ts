@@ -1,17 +1,30 @@
-import type { PermissionAnswer, Question, SessionState, TranscriptEntry } from '@orbit-code/protocol';
+import type { AgentCatalog, PermissionAnswer, Question, SessionOptions, SessionState, TranscriptEntry } from '@orbit-code/protocol';
 import { isWorkspaceId } from '@orbit-code/protocol/workspacePath';
+import { Composer, type ComposerHost } from './composer';
+import type { ConstellationMode } from './constellation';
 import { button, el } from './dom';
 import { renderMarkdown } from './markdown';
 import { type Turn, activityOf, clock, dollars, fileName, outcomeLine, promptLine, seconds, toolLabel } from './turns';
 
 export interface SessionViewActions {
-  /** A follow-up from the view's own composer, continuing the conversation `key`; false if it could not be sent. */
-  prompt(text: string, key: string): boolean;
+  /** A follow-up from the view's own composer, continuing the conversation `key` with the skills and files attached to it; false if it could not be sent. */
+  prompt(text: string, key: string, skills: readonly string[], files: readonly string[]): boolean;
   interrupt(key: string): void;
   /** `answers`: for a request asking questions, the answer to each, by question text. */
   answerPermission(key: string, id: string, answer: PermissionAnswer, answers?: Record<string, string>): void;
   openFile(path: string): void;
   close(): void;
+  setOptions(options: Partial<SessionOptions>): void;
+  /** The composer's Files button: the host's open dialog picks files to attach. */
+  pickFiles(): void;
+  /** The composer's Skills toggle: the skills panel opens over the view, or closes. */
+  toggleSkills(from: DOMRect): void;
+  /** A slash command being typed in the composer: `query` is the text after the slash, undefined once it is not. */
+  slash(query: string | undefined, from: DOMRect): void;
+  /** A key pressed while a slash command is being typed; true if the skills panel took it. */
+  slashKey(key: string): boolean;
+  /** The skills attached to the reply changed. */
+  skillsChanged(names: readonly string[]): void;
 }
 
 /** What is picked on the question card for one question: option labels, and text of the user's own. */
@@ -34,11 +47,13 @@ const SHEET_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
 /**
  * A session opened out of its bubble: what it asked, Claude's replies as Markdown, every tool call, the
- * permission card, and a footer to stop the session or, once it is done, to reply. The transcript is the
- * whole conversation the session belongs to (a reply continues it); the header follows the session that was
- * opened. Every conversation's transcript is kept, and the view shows one at a time.
+ * permission card, and a composer to reply with, carrying skills, files, the model, effort and permission mode
+ * like the drawer's. While Claude works, Stop takes Send's place and the reply can be written and attached to
+ * ahead; it goes once the turn ends. The transcript is the whole conversation the session belongs to (a reply
+ * continues it); the header follows the session that was opened. Every conversation's transcript is kept, and
+ * the view shows one at a time.
  */
-export class SessionView {
+export class SessionView implements ComposerHost {
   private readonly root = el('section', 'session-view');
   private readonly panel = el('div', 'sv-panel');
   private readonly title = el('h2', 'sv-title');
@@ -62,10 +77,12 @@ export class SessionView {
   private readonly submitAnswers = button('Answer', 'button primary');
   /** The request the question card shows, and what is picked for each of its questions. */
   private asked: { id: string; questions: readonly Question[]; picks: Map<string, Pick> } | undefined;
-  private readonly input = el('textarea', 'sv-input');
-  private readonly action = el('button', 'button primary sv-action', 'Send');
+  /** The reply to the conversation on show. */
+  private readonly composer: Composer;
   /** Shown only once a turn has failed (an API error, or the process lost to the machine sleeping): resumes the same conversation without retyping anything. */
   private readonly continueButton = button('Continue', 'button primary sv-continue', 'Continue this conversation');
+  /** Where the skills panel opens from the composer, standing on it over the transcript. */
+  readonly overlay = el('div', 'sv-overlay');
   private readonly panes = new Map<string, Pane>();
   /** The latest state of each conversation, by key. */
   private readonly states = new Map<string, SessionState>();
@@ -108,32 +125,42 @@ export class SessionView {
     replies.append(this.skip, this.submitAnswers);
     this.question.append(el('p', 'question-title', 'Claude asks'), this.questionList, replies);
 
-    const footer = el('form', 'sv-footer');
-    this.input.rows = 1;
-    this.input.setAttribute('aria-label', 'Reply');
-    this.action.type = 'submit';
-    footer.append(this.continueButton, this.input, this.action);
+    this.composer = new Composer(
+      {
+        send: (text, _from, skills, files) => this.send(text, skills, files),
+        sent: () => {
+          this.transcript.scrollTop = this.transcript.scrollHeight;
+        },
+        stop: () => {
+          if (this.shown !== undefined) actions.interrupt(this.shown);
+        },
+        setOptions: (options) => actions.setOptions(options),
+        toggleSkills: (from) => actions.toggleSkills(from),
+        pickFiles: () => actions.pickFiles(),
+        slash: (query, from) => actions.slash(query, from),
+        slashKey: (key) => actions.slashKey(key),
+        skillsChanged: (names) => actions.skillsChanged(names),
+      },
+      { placeholder: 'Reply to continue the conversation… or type / for a skill', label: 'Reply', maxInputPx: MAX_INPUT_PX },
+    );
+    const footer = this.composer.element;
+    footer.classList.add('sv-footer');
+    this.composer.addAction(this.continueButton);
 
     this.panel.append(head, this.transcript, this.permission, this.question, footer);
-    this.root.append(this.panel);
+    this.root.append(this.panel, this.overlay);
     host.append(this.root);
+    // The skills panel stands on the composer, over the transcript between it and the header, however tall chips or the title make them.
+    const measure = new ResizeObserver(() => {
+      this.root.style.setProperty('--sv-footer-height', `${footer.offsetHeight}px`);
+      this.root.style.setProperty('--sv-room', `${this.panel.offsetHeight - head.offsetHeight - footer.offsetHeight}px`);
+    });
+    measure.observe(head);
+    measure.observe(footer);
+    measure.observe(this.panel);
 
     this.closeButton.addEventListener('click', () => actions.close());
     this.transcript.append(el('div', 't-pane'));
-    footer.addEventListener('submit', (event) => {
-      event.preventDefault();
-      this.submit();
-    });
-    this.input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-        event.preventDefault();
-        this.submit();
-      }
-    });
-    this.input.addEventListener('input', () => {
-      this.autosize();
-      this.refreshFooter();
-    });
     this.continueButton.addEventListener('click', () => this.continueTurn());
     this.allow.addEventListener('click', () => this.answer('allow'));
     this.always.addEventListener('click', () => this.answer('always'));
@@ -155,6 +182,15 @@ export class SessionView {
     return this.isOpen ? this.shown : undefined;
   }
 
+  /** Skills attached to the reply. */
+  get skills(): readonly string[] {
+    return this.composer.skills;
+  }
+
+  get slashQuery(): string | undefined {
+    return this.composer.slashQuery;
+  }
+
   /** Opens out of `origin` (the bubble), over the session `turn` of the conversation `key`; without a turn, over the whole conversation. */
   open(turn: Turn | undefined, origin: DOMRect | undefined, key: string): void {
     this.show(key);
@@ -172,7 +208,7 @@ export class SessionView {
         part.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 110 + k * 35, easing: 'ease-out', fill: 'backwards' });
       }
     }
-    (this.input.disabled ? this.closeButton : this.input).focus({ preventScroll: true });
+    if (!this.composer.focus()) this.closeButton.focus({ preventScroll: true });
   }
 
   /** Collapses back into `origin`. */
@@ -232,9 +268,41 @@ export class SessionView {
       this.answered = undefined;
       this.asked = undefined;
     }
+    this.composer.setState(state);
     this.refreshFooter();
     this.renderHead();
     this.syncTicker();
+  }
+
+  /** Models from Claude Code itself, for the composer. */
+  setCatalog(catalog: AgentCatalog): void {
+    this.composer.setCatalog(catalog);
+  }
+
+  /** Attaches a skill to the reply. */
+  attach(name: string): void {
+    this.composer.attach(name);
+    if (this.isOpen) this.composer.focus();
+  }
+
+  /** Attaches files to the reply as context. */
+  attachFiles(paths: readonly string[]): void {
+    this.composer.attachFiles(paths);
+    if (this.isOpen) this.composer.focus();
+  }
+
+  /** Where a dragged skill is dropped: anywhere on the composer, while the view is open. */
+  dropRect(): DOMRect | undefined {
+    return this.isOpen ? this.composer.dropRect() : undefined;
+  }
+
+  setDropState(state: 'ready' | 'over' | undefined): void {
+    this.composer.setDropState(state);
+  }
+
+  /** The composer has only the Skills toggle. */
+  setToggled(kind: ConstellationMode | undefined): void {
+    this.composer.setSkillsPressed(kind === 'skills');
   }
 
   /** The transcript of the conversation `key` grew, or starts over. */
@@ -283,6 +351,7 @@ export class SessionView {
       this.shown = undefined;
       this.state = undefined;
       this.transcript.replaceChildren(el('div', 't-pane'));
+      this.composer.setState(undefined);
     } else {
       pane?.root.remove();
     }
@@ -307,30 +376,23 @@ export class SessionView {
     this.state = state;
     this.answered = undefined;
     if (state) this.setState(state);
-    else this.permission.hidden = this.question.hidden = true;
+    else {
+      this.permission.hidden = this.question.hidden = true;
+      this.composer.setState(undefined);
+    }
   }
 
-  private submit(): void {
-    const text = this.input.value.trim();
-    const phase = this.state?.phase;
+  /** The composer's reply goes to the conversation on show, once that is idle. */
+  private send(text: string, skills: readonly string[], files: readonly string[]): boolean {
     const key = this.shown;
-    if (key === undefined) return;
-    if (phase === 'working') {
-      this.actions.interrupt(key);
-      return;
-    }
-    if (!text || phase !== 'idle' || !this.actions.prompt(text, key)) return;
-    this.input.value = '';
-    this.autosize();
-    this.refreshFooter();
-    this.transcript.scrollTop = this.transcript.scrollHeight;
+    return key !== undefined && this.state?.phase === 'idle' && this.actions.prompt(text, key, skills, files);
   }
 
   /** Resumes the conversation after a failed turn, without needing anything typed: `prompt()` already restarts the agent process with `--resume`. */
   private continueTurn(): void {
     const key = this.shown;
     if (key === undefined || this.state?.phase !== 'idle') return;
-    this.actions.prompt('Continue', key);
+    this.actions.prompt('Continue', key, [], []);
   }
 
   private answer(answer: PermissionAnswer): void {
@@ -443,28 +505,21 @@ export class SessionView {
     }
   }
 
+  /** Continue after a failed turn, and what the composer's input says; its Send or Stop follows the state by itself. */
   private refreshFooter(): void {
     const phase = this.state?.phase ?? 'unavailable';
     const busy = phase === 'working' || phase === 'stopping';
     const canContinue = phase === 'idle' && this.turn?.end?.outcome === 'failed';
     this.continueButton.hidden = !canContinue;
-    this.input.disabled = phase !== 'idle';
-    this.input.placeholder = busy
-      ? 'You can reply once Claude finishes'
-      : phase === 'unavailable'
-        ? (this.state?.error ?? 'Claude Code is not available')
-        : canContinue
-          ? 'Continue where it left off, or reply with something else…'
-          : 'Reply to continue the conversation…';
-    if (busy) {
-      this.action.textContent = phase === 'stopping' ? 'Stopping' : 'Stop';
-      this.action.className = 'button danger sv-action';
-      this.action.disabled = phase === 'stopping';
-    } else {
-      this.action.textContent = 'Send';
-      this.action.className = 'button primary sv-action';
-      this.action.disabled = phase !== 'idle' || this.input.value.trim() === '';
-    }
+    this.composer.setPlaceholder(
+      busy
+        ? 'Write the next prompt now, and send it once Claude finishes'
+        : phase === 'unavailable'
+          ? (this.state?.error ?? 'Claude Code is not available')
+          : canContinue
+            ? 'Continue where it left off, or reply with something else…'
+            : 'Reply to continue the conversation… or type / for a skill',
+    );
   }
 
   private syncTicker(running = this.isOpen && !!this.turn && !this.turn.end): void {
@@ -482,11 +537,6 @@ export class SessionView {
     const cy = origin ? origin.top + origin.height / 2 - box.top : box.height - 22;
     const radius = Math.hypot(Math.max(cx, box.width - cx), Math.max(cy, box.height - cy)) + 8;
     return { from: `circle(22px at ${cx}px ${cy}px)`, to: `circle(${radius}px at ${cx}px ${cy}px)` };
-  }
-
-  private autosize(): void {
-    this.input.style.height = 'auto';
-    this.input.style.height = `${Math.min(this.input.scrollHeight, MAX_INPUT_PX)}px`;
   }
 }
 

@@ -1,7 +1,8 @@
 import type { AgentCatalog, ConversationSummary, HistorySnapshot, McpAction, PermissionAnswer, SessionOptions, SessionState, SessionsSnapshot, TranscriptEntry } from '@orbit-code/protocol';
 import { type ClaudeBubble, ClaudeBubbles } from './claudeBubbles';
-import { Constellation } from './constellation';
-import { type DrawerToggle, PromptDrawer } from './drawer';
+import type { ComposerHost } from './composer';
+import { Constellation, type ConstellationMode } from './constellation';
+import { PromptDrawer } from './drawer';
 import { HistoryPanel } from './historyPanel';
 import { SessionView } from './sessionView';
 import { type Turn, promptLine } from './turns';
@@ -41,10 +42,10 @@ interface Conversation {
 /**
  * Claude in the HUD, kept off the graph until it is wanted. The drawer at the bottom edge holds the
  * composer; a sent prompt becomes a session bubble at the bottom left that pulses while Claude works and
- * leaves when it is done; a bubble opens into the session view. Several conversations run at once, each
- * with its own bubbles and transcript; the drawer continues the current one, or starts another beside it
- * while it is busy. This class splits host state and the transcripts into sessions (turns) and keeps the
- * three in step.
+ * leaves when it is done; a bubble opens into the session view, which has a composer of its own for replies.
+ * Several conversations run at once, each with its own bubbles and transcript; the drawer continues the
+ * current one, or starts another beside it while it is busy. This class splits host state and the transcripts
+ * into sessions (turns) and keeps the three in step.
  */
 export class SessionPanel {
   private readonly bubbles: ClaudeBubbles;
@@ -57,11 +58,12 @@ export class SessionPanel {
   private current: string | undefined;
   /** What the open view came out of: a bubble, or null for the conversation opened from the drawer. */
   private opened: ClaudeBubble | null | undefined;
-  /** The skills panel was opened by a slash typed in the composer, so it goes when the slash does. */
+  /** The composer the constellation opens above and attaches skills to: the drawer's, or the session view's. */
+  private target: ComposerHost;
+  /** The skills panel was opened by a slash typed in the target's composer, so it goes when the slash does. */
   private slashOpened = false;
-  /** Esc closed the panel the slash opened; it stays closed until the slash is gone and typed again. */
-  private slashDismissed = false;
-  private slashQuery: string | undefined;
+  /** Esc closed the panel this composer's slash opened; it stays closed until that slash is gone and typed again. */
+  private slashDismissed: ComposerHost | undefined;
 
   constructor(
     host: HTMLElement,
@@ -73,36 +75,45 @@ export class SessionPanel {
       abandoned: (prompt) => this.drawer.restore(prompt),
     });
     this.view = new SessionView(host, {
-      prompt: (text, key) => this.reply(text, key),
+      prompt: (text, key, skills, files) => this.reply(text, key, skills, files),
       interrupt: (key) => actions.interrupt(key),
       answerPermission: (key, id, answer, answers) => actions.answerPermission(key, id, answer, answers),
       openFile: (path) => actions.openFile(path),
       close: () => this.closeView(),
+      setOptions: (options) => actions.setOptions(options),
+      pickFiles: () => actions.pickFiles(),
+      toggleSkills: (from) => this.toggle(this.view, 'skills', from),
+      slash: (query, from) => this.slash(this.view, query, from),
+      slashKey: (key) => this.slashKey(this.view, key),
+      skillsChanged: (names) => this.skillsChanged(this.view, names),
     });
     this.drawer = new PromptDrawer(host, {
       submit: (text, from, skills, files) => this.launch(text, from, skills, files),
       setOptions: (options) => actions.setOptions(options),
       newSession: () => actions.newSession(),
       viewConversation: () => this.openView(null),
-      toggle: (kind, from) => this.toggle(kind, from),
+      toggle: (kind, from) => this.toggle(this.drawer, kind, from),
       pickFiles: () => actions.pickFiles(),
-      slash: (query, from) => this.slash(query, from),
-      slashKey: (key) => this.slashKey(key),
-      skillsChanged: (names) => this.constellation.setAttached(names),
-      closed: () => this.constellation.close(),
+      slash: (query, from) => this.slash(this.drawer, query, from),
+      slashKey: (key) => this.slashKey(this.drawer, key),
+      skillsChanged: (names) => this.skillsChanged(this.drawer, names),
+      closed: () => {
+        if (this.target === this.drawer) this.constellation.close();
+      },
     });
+    this.target = this.drawer;
     this.constellation = new Constellation(this.drawer.overlay, host, {
-      attach: (name) => this.drawer.attach(name),
-      dropTarget: () => this.drawer.dropRect(),
-      dragState: (state) => this.drawer.setDropState(state),
+      attach: (name) => this.target.attach(name),
+      dropTarget: () => this.target.dropRect(),
+      dragState: (state) => this.target.setDropState(state),
       openConversation: (conversation, origin) => this.openHistory(conversation, origin),
       refresh: (mode) => (mode === 'skills' ? actions.refreshCatalog() : mode === 'history' ? actions.loadHistory() : actions.reloadMcp()),
       mcpAction: (server, action) => actions.mcpAction(server, action),
       openFile: (path) => actions.openFile(path),
       closed: () => {
-        this.drawer.setToggled(undefined);
+        this.target.setToggled(undefined);
         // Closed by anything but the slash going away (Esc, the close button, a toggle): the slash still typed does not reopen it.
-        if (this.slashOpened && this.slashQuery !== undefined) this.slashDismissed = true;
+        if (this.slashOpened && this.target.slashQuery !== undefined) this.slashDismissed = this.target;
         this.slashOpened = false;
       },
       wake,
@@ -114,16 +125,17 @@ export class SessionPanel {
     });
 
     // Esc puts away what Claude has open before it moves the graph view: capturing on window runs ahead of Interaction,
-    // wherever focus is (after Allow hides the permission card, focus is on the body). A skill being dragged goes back first.
+    // wherever focus is (after Allow hides the permission card, focus is on the body). A skill being dragged goes back
+    // first, then the constellation, which stands on the drawer's or the session view's composer.
     window.addEventListener(
       'keydown',
       (event) => {
         if (event.key !== 'Escape') return;
         if (this.constellation.cancelDrag()) {
           // Nothing else closes on the same key.
-        } else if (this.view.isOpen) this.closeView();
+        } else if (this.constellation.mode) this.constellation.close();
+        else if (this.view.isOpen) this.closeView();
         else if (this.history.isOpen) this.closeHistory();
-        else if (this.constellation.mode) this.constellation.close();
         else if (this.drawer.isOpen) this.drawer.close();
         else return;
         event.stopPropagation();
@@ -194,6 +206,7 @@ export class SessionPanel {
 
   setCatalog(catalog: AgentCatalog): void {
     this.drawer.setCatalog(catalog);
+    this.view.setCatalog(catalog);
     this.constellation.setCatalog(catalog);
   }
 
@@ -202,9 +215,15 @@ export class SessionPanel {
     this.history.update(history.conversations);
   }
 
-  /** Files to go with the next prompt, from the host's picker or a file's card: the drawer opens with them attached. */
+  /**
+   * Files to go with the next prompt, from the host's picker or a file's card: while the session view is open they go
+   * with its reply, else the drawer opens with them attached.
+   */
   attachFiles(paths: readonly string[]): void {
-    if (this.view.isOpen) this.closeView();
+    if (this.view.isOpen) {
+      this.view.attachFiles(paths);
+      return;
+    }
     if (this.history.isOpen) this.closeHistory();
     this.drawer.open();
     this.drawer.attachFiles(paths);
@@ -215,7 +234,7 @@ export class SessionPanel {
     return this.constellation.frame(dt);
   }
 
-  /** Read by scripts/harness.mjs. */
+  /** Read by tools/harness/harness.mjs. */
   get constellationState(): Constellation['debug'] {
     return this.constellation.debug;
   }
@@ -277,28 +296,42 @@ export class SessionPanel {
     return true;
   }
 
-  /** A toggle in the composer bar or the sheet's MCP button: opens its panel, switches to it from another one, or closes it. */
-  private toggle(kind: DrawerToggle, from: DOMRect): void {
-    if (this.constellation.mode === kind) {
+  /**
+   * A toggle in a composer bar (the drawer's or the session view's) or the sheet's MCP button: opens its panel over that
+   * composer, switches to it from another one, or closes it.
+   */
+  private toggle(host: ComposerHost, kind: ConstellationMode, from: DOMRect): void {
+    if (this.constellation.mode === kind && this.target === host) {
       this.constellation.close();
       return;
     }
     // History is read from disk each time it is opened; conversations change while Orbit runs.
     if (kind === 'history') this.actions.loadHistory();
-    this.constellation.open(kind, from);
-    this.drawer.setToggled(kind);
+    this.openConstellation(host, kind, from);
     this.slashOpened = false;
-    if (kind === 'skills') this.constellation.setFilter(this.slashQuery ?? '');
+    if (kind === 'skills') this.constellation.setFilter(host.slashQuery ?? '');
+  }
+
+  /** Opens the constellation as `kind` over `host`'s composer, which then takes the skills it attaches. */
+  private openConstellation(host: ComposerHost, kind: ConstellationMode, from: DOMRect): void {
+    if (this.target !== host) {
+      this.target.setToggled(undefined);
+      this.target = host;
+      this.constellation.mount(host.overlay);
+      this.constellation.setAttached(host.skills);
+    }
+    this.constellation.open(kind, from);
+    host.setToggled(kind);
   }
 
   /**
-   * A slash command typed in the composer: the skills panel opens over the sheet, narrowed to what was typed, and goes
-   * away once the text is no longer just a command (a space, or the slash deleted). Its skills stay visible while typing.
+   * A slash command typed in a composer: the skills panel opens over it, narrowed to what was typed, and goes away once the
+   * text is no longer just a command (a space, or the slash deleted). Its skills stay visible while typing.
    */
-  private slash(query: string | undefined, from: DOMRect): void {
-    this.slashQuery = query;
+  private slash(host: ComposerHost, query: string | undefined, from: DOMRect): void {
     if (query === undefined) {
-      this.slashDismissed = false;
+      if (this.slashDismissed === host) this.slashDismissed = undefined;
+      if (this.target !== host) return;
       if (this.slashOpened) {
         this.slashOpened = false;
         this.constellation.close();
@@ -307,26 +340,30 @@ export class SessionPanel {
       }
       return;
     }
-    if (this.constellation.mode !== 'skills') {
-      if (this.slashDismissed) return;
-      this.constellation.open('skills', from);
-      this.drawer.setToggled('skills');
+    if (this.constellation.mode !== 'skills' || this.target !== host) {
+      if (this.slashDismissed === host) return;
+      this.openConstellation(host, 'skills', from);
       this.slashOpened = true;
     }
     this.constellation.setFilter(query);
   }
 
   /** Enter or Tab attaches the picked skill in place of the typed command; the arrows move the pick. */
-  private slashKey(key: string): boolean {
-    if (this.constellation.mode !== 'skills') return false;
+  private slashKey(host: ComposerHost, key: string): boolean {
+    if (this.constellation.mode !== 'skills' || this.target !== host) return false;
     if (key === 'ArrowDown' || key === 'ArrowUp') {
       this.constellation.moveHighlight(key === 'ArrowDown' ? 1 : -1);
       return true;
     }
     const name = this.constellation.highlightedSkill();
     if (!name) return false;
-    this.drawer.attach(name);
+    host.attach(name);
     return true;
+  }
+
+  /** Skills attached in the composer the constellation serves wear a ring in it. */
+  private skillsChanged(host: ComposerHost, names: readonly string[]): void {
+    if (this.target === host) this.constellation.setAttached(names);
   }
 
   /** Out of a conversation's glyph: the drawer and its panel go away, the history panel opens where the session view would. */
@@ -352,14 +389,14 @@ export class SessionPanel {
     this.drawer.open();
   }
 
-  /** From the open view: the conversation continues in place, and the new session's bubble waits under the view. */
-  private reply(text: string, key: string): boolean {
+  /** From the open view: the conversation continues in place with what was attached, and the new session's bubble waits under the view. */
+  private reply(text: string, key: string, skills: readonly string[], files: readonly string[]): boolean {
     if (this.conversations.get(key)?.state.phase !== 'idle') return false;
-    this.actions.prompt(text, [], [], key);
-    const bubble = this.bubbles.launch(text, undefined, false, key);
+    this.actions.prompt(text, skills, files, key);
+    const bubble = this.bubbles.launch(promptLine(text, skills, files), undefined, false, key);
     this.opened = bubble;
     this.bubbles.cover(bubble);
-    this.view.follow({ key, id: -1, prompt: text, startedAt: Date.now(), end: undefined, lastTool: undefined, replying: false });
+    this.view.follow({ key, id: -1, prompt: text, skills, files, startedAt: Date.now(), end: undefined, lastTool: undefined, replying: false });
     return true;
   }
 
@@ -378,6 +415,8 @@ export class SessionPanel {
   }
 
   private closeView(): void {
+    // A skills panel standing on the view's composer goes with it.
+    if (this.target === this.view) this.constellation.close();
     const bubble = this.opened;
     const hadFocus = document.activeElement instanceof HTMLElement && document.activeElement.closest('.session-view') !== null;
     this.view.close(bubble?.button.getBoundingClientRect());

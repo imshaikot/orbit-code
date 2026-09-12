@@ -498,20 +498,17 @@ select:focus-visible {
   border-radius: 14px;
 }
 
-.composer-input::placeholder,
-.sv-input::placeholder {
+.composer-input::placeholder {
   color: var(--ink-faint);
 }
 
-.composer-input:focus,
-.sv-input:focus {
+.composer-input:focus {
   outline: none;
   border-color: rgba(187, 168, 255, 0.65);
   box-shadow: 0 0 0 3px rgba(165, 139, 255, 0.14);
 }
 
-.composer-input:disabled,
-.sv-input:disabled {
+.composer-input:disabled {
   opacity: 0.55;
 }
 
@@ -2517,42 +2514,52 @@ h5.md-heading {
   gap: 6px;
 }
 
+/* The reply composer: the drawer's, a little tighter. */
 .sv-footer {
-  display: flex;
-  align-items: flex-end;
   gap: 8px;
   padding: 12px 14px 14px;
   border-top: 1px solid var(--rule);
 }
 
-.sv-input {
-  flex: 1;
-  min-width: 0;
+.sv-footer .composer-input {
   min-height: 40px;
   max-height: 140px;
   padding: 10px 13px;
-  resize: none;
   font-size: 13px;
   line-height: 1.4;
-  color: var(--ink);
-  background: var(--field);
-  border: 1px solid var(--rule);
-  border-radius: 14px;
 }
 
-.sv-action {
-  flex: none;
-  height: 40px;
-  min-width: 5em;
-  padding: 0 16px;
-  font-size: 12.5px;
-}
-
+/* After a failed turn, Continue stands beside Send at the end of the bar. */
 .sv-continue {
-  flex: none;
-  height: 40px;
-  padding: 0 16px;
+  margin-left: auto;
+  padding: 5px 14px;
   font-size: 12.5px;
+}
+
+.sv-continue:not([hidden]) + .composer-action {
+  margin-left: 0;
+}
+
+/* The skills panel opened from the reply composer stands on it, over the transcript, below the view's header. */
+.sv-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--sv-footer-height, 0px);
+  pointer-events: none;
+}
+
+.sv-overlay .constellation {
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: auto;
+  transform: none;
+}
+
+.sv-overlay .constellation-panel {
+  height: min(440px, calc(var(--sv-room, 456px) - 16px));
+  min-height: 0;
 }
 
 /* ── Perf readout ───────────────────────────────────────────── */

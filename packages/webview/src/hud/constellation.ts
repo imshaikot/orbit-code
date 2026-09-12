@@ -266,6 +266,11 @@ export class Constellation {
     return this.current;
   }
 
+  /** Moves the panel onto another composer's overlay: the drawer's sheet, or the session view's reply. */
+  mount(parent: HTMLElement): void {
+    if (this.root.parentElement !== parent) parent.append(this.root);
+  }
+
   /** Read by tools/harness/harness.mjs. */
   get debug(): {
     mode: ConstellationMode | undefined;

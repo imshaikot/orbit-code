@@ -1,7 +1,7 @@
-import type { AgentCatalog, PermissionMode, SessionOptions, SessionState } from '@orbit-code/protocol';
+import type { AgentCatalog, SessionOptions, SessionState } from '@orbit-code/protocol';
+import { Composer, type ComposerHost } from './composer';
 import { button, el } from './dom';
-import { EffortMeter } from './effortMeter';
-import { dollars, fileName } from './turns';
+import { dollars } from './turns';
 
 export type DrawerToggle = 'skills' | 'history' | 'mcp';
 
@@ -25,40 +25,19 @@ export interface DrawerActions {
   closed(): void;
 }
 
-type Choice = readonly [value: string, label: string];
-
 const MAX_INPUT_PX = 180;
 const DRAG_SLOP_PX = 4;
 /** Release speed that decides the direction on its own, whatever the position. */
 const FLING_PX_PER_MS = 0.45;
 /** A pointer that rested this long before release is not flinging. */
 const FLING_STALE_MS = 90;
-/** Until Claude Code has said which models it offers (the catalog), the aliases every version knows. */
-const FALLBACK_MODELS: readonly Choice[] = [
-  ['', 'Default model'],
-  ['opus', 'Opus'],
-  ['sonnet', 'Sonnet'],
-  ['haiku', 'Haiku'],
-];
-/** Skills one prompt can carry; the host takes no more. */
-const MAX_SKILLS = 8;
-/** Files one prompt can carry; the host takes no more. */
-const MAX_FILES = 20;
-const MODE_LABELS: Record<PermissionMode, string> = {
-  default: 'Ask before edits',
-  acceptEdits: 'Accept edits',
-  plan: 'Plan only',
-  bypassPermissions: 'Bypass permissions',
-};
-/** bypassPermissions can only be set in VS Code settings, so it is listed only while it is active. */
-const PICKABLE_MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'plan'];
 
 /**
  * The bottom edge: a tab carrying Claude's spark. A click or an upward drag opens a sheet attached to
  * the edge with the prompt composer; a click on its grabber, a downward drag or Esc puts it away.
  * Sending closes it too, while the coordinator launches the prompt into a session bubble.
  */
-export class PromptDrawer {
+export class PromptDrawer implements ComposerHost {
   readonly tab = button('', 'drawer-tab');
   private readonly root = el('div', 'drawer');
   private readonly sheet = el('section', 'sheet');
@@ -66,29 +45,14 @@ export class PromptDrawer {
   private readonly contextText = el('span', 'sheet-context-text');
   private readonly view = button('View conversation', 'link-button sheet-link');
   private readonly startNew = button('New conversation', 'link-button sheet-link', 'The next prompt starts a fresh conversation');
-  private readonly input = el('textarea', 'composer-input');
-  private readonly model = el('select', 'composer-select');
-  private readonly mode = el('select', 'composer-select');
-  private readonly effort = new EffortMeter((effort) => this.actions.setOptions({ effort }));
-  private readonly action = el('button', 'button primary composer-action', 'Send');
-  private readonly form = el('form', 'composer');
-  private readonly chips = el('div', 'composer-skills');
-  private readonly skillsToggle = button('', 'composer-toggle', 'Skills Claude Code offers here: drag one onto the prompt to attach it');
+  private readonly composer: Composer;
   private readonly historyToggle = button('', 'composer-toggle', 'Earlier conversations of this workspace');
-  private readonly filesToggle = button('', 'composer-toggle', 'Attach files for Claude to read with the prompt');
   /** Top right of the sheet: the MCP servers, wearing the state that most needs the user. */
   private readonly mcpToggle = button('', 'composer-toggle sheet-mcp');
   private readonly mcpCount = el('span', 'sheet-mcp-count');
   /** Where the skill and history panels open, on the sheet's top edge. */
   readonly overlay = el('div', 'drawer-overlay');
-  private attached: string[] = [];
-  /** Files attached to the prompt: workspace ids, or absolute paths outside the workspace. */
-  private files: string[] = [];
-  private catalog: AgentCatalog | undefined;
-  private state: SessionState | undefined;
   private dragged = false;
-  /** The slash command being typed, as last told to the coordinator. */
-  private slash: string | undefined;
 
   constructor(
     host: HTMLElement,
@@ -110,33 +74,26 @@ export class PromptDrawer {
     const context = el('p', 'sheet-context');
     context.append(this.contextText, this.view, this.startNew);
 
-    const form = this.form;
-    this.input.rows = 1;
-    this.input.placeholder = 'Ask Claude about this workspace… or type / for a skill';
-    this.input.setAttribute('aria-label', 'Prompt');
-    this.model.setAttribute('aria-label', 'Model');
-    this.mode.setAttribute('aria-label', 'Permission mode');
-    this.mode.title = 'What Claude may do without asking';
-    this.action.type = 'submit';
-    this.chips.hidden = true;
-    this.chips.setAttribute('aria-label', 'Skills and files attached to the prompt');
-    const toggles = [
-      [this.skillsToggle, 'skills', 'Skills'],
-      [this.historyToggle, 'history', 'History'],
-    ] as const;
-    for (const [toggle, kind, label] of toggles) {
-      toggle.dataset.kind = kind;
-      toggle.setAttribute('aria-pressed', 'false');
-      const icon = el('span', `composer-toggle-icon composer-toggle-${kind}`);
-      icon.setAttribute('aria-hidden', 'true');
-      toggle.append(icon, label);
-      toggle.addEventListener('click', () => actions.toggle(kind, toggle.getBoundingClientRect()));
-    }
-    this.filesToggle.dataset.kind = 'files';
-    const clip = el('span', 'composer-toggle-icon composer-toggle-files');
-    clip.setAttribute('aria-hidden', 'true');
-    this.filesToggle.append(clip, 'Files');
-    this.filesToggle.addEventListener('click', () => actions.pickFiles());
+    this.composer = new Composer(
+      {
+        send: (text, from, skills, files) => actions.submit(text, from, skills, files),
+        sent: () => this.close(),
+        setOptions: (options) => actions.setOptions(options),
+        toggleSkills: (from) => actions.toggle('skills', from),
+        pickFiles: () => actions.pickFiles(),
+        slash: (query, from) => actions.slash(query, from),
+        slashKey: (key) => actions.slashKey(key),
+        skillsChanged: (names) => actions.skillsChanged(names),
+      },
+      { placeholder: 'Ask Claude about this workspace… or type / for a skill', label: 'Prompt', maxInputPx: MAX_INPUT_PX },
+    );
+    this.historyToggle.dataset.kind = 'history';
+    this.historyToggle.setAttribute('aria-pressed', 'false');
+    const gyroscope = el('span', 'composer-toggle-icon composer-toggle-history');
+    gyroscope.setAttribute('aria-hidden', 'true');
+    this.historyToggle.append(gyroscope, 'History');
+    this.historyToggle.addEventListener('click', () => actions.toggle('history', this.historyToggle.getBoundingClientRect()));
+    this.composer.addToggle(this.historyToggle);
     this.mcpToggle.dataset.kind = 'mcp';
     this.mcpToggle.dataset.state = 'none';
     this.mcpToggle.setAttribute('aria-pressed', 'false');
@@ -145,11 +102,8 @@ export class PromptDrawer {
     station.setAttribute('aria-hidden', 'true');
     this.mcpToggle.append(station, 'MCP', this.mcpCount);
     this.mcpToggle.addEventListener('click', () => actions.toggle('mcp', this.mcpToggle.getBoundingClientRect()));
-    const bar = el('div', 'composer-bar');
-    bar.append(this.filesToggle, this.skillsToggle, this.historyToggle, this.model, this.effort.element, this.mode, this.action);
-    form.append(this.chips, this.input, bar);
 
-    this.sheet.append(this.grabber, this.mcpToggle, context, form);
+    this.sheet.append(this.grabber, this.mcpToggle, context, this.composer.element);
     this.root.append(this.overlay, this.sheet, this.tab);
     host.append(this.root);
     this.setOpen(false);
@@ -160,38 +114,24 @@ export class PromptDrawer {
     this.grabber.addEventListener('click', () => this.consumeDrag() || this.close());
     this.draggable(this.tab, true);
     this.draggable(this.grabber, false);
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      this.send();
-    });
-    this.input.addEventListener('keydown', (event) => {
-      if (event.isComposing) return;
-      // While a slash command is being typed, the skills panel takes Enter, Tab and the arrows: a pick, or moving it.
-      if (this.slash !== undefined && ['Enter', 'Tab', 'ArrowDown', 'ArrowUp'].includes(event.key) && !event.shiftKey && actions.slashKey(event.key)) {
-        event.preventDefault();
-        return;
-      }
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        this.send();
-      }
-    });
-    this.input.addEventListener('input', () => {
-      this.autosize();
-      this.refreshAction();
-      this.refreshSlash();
-    });
     this.view.addEventListener('click', () => {
       this.close();
       actions.viewConversation();
     });
     this.startNew.addEventListener('click', () => actions.newSession());
-    this.model.addEventListener('change', () => actions.setOptions({ model: this.model.value }));
-    this.mode.addEventListener('change', () => actions.setOptions({ permissionMode: this.mode.value as PermissionMode }));
   }
 
   get isOpen(): boolean {
     return this.root.dataset.open === 'true';
+  }
+
+  /** Skills attached to the prompt. */
+  get skills(): readonly string[] {
+    return this.composer.skills;
+  }
+
+  get slashQuery(): string | undefined {
+    return this.composer.slashQuery;
   }
 
   /** Where a session started elsewhere (the command palette) rises from. */
@@ -201,7 +141,7 @@ export class PromptDrawer {
 
   open(): void {
     this.setOpen(true);
-    this.input.focus({ preventScroll: true });
+    this.composer.focus();
   }
 
   close(): void {
@@ -212,33 +152,20 @@ export class PromptDrawer {
     if (hadFocus) this.tab.focus({ preventScroll: true });
   }
 
-  /** Hides the tab while the session view is open; the view has its own reply box. */
+  /** Hides the tab while the session view is open; the view has its own composer. */
   setTabHidden(hidden: boolean): void {
     this.root.dataset.tabHidden = String(hidden);
   }
 
   /** Puts a prompt the host never took up back into an empty composer. */
   restore(text: string): void {
-    if (this.input.value.trim()) return;
-    this.input.value = text;
-    this.autosize();
-    this.refreshAction();
-    this.refreshSlash();
+    this.composer.restore(text);
   }
 
   setState(state: SessionState): void {
-    this.state = state;
     const { phase } = state;
     this.tab.dataset.phase = phase;
-    this.input.disabled = this.model.disabled = this.mode.disabled = this.filesToggle.disabled = phase === 'unavailable';
-    this.effort.setDisabled(phase === 'unavailable');
-    this.syncModels();
-    const modes = PICKABLE_MODES.includes(state.options.permissionMode) ? PICKABLE_MODES : [...PICKABLE_MODES, state.options.permissionMode];
-    syncSelect(
-      this.mode,
-      modes.map((mode) => [mode, MODE_LABELS[mode]] as const),
-      state.options.permissionMode,
-    );
+    this.composer.setState(state);
 
     // A busy conversation is no reason to wait: the next prompt starts another one beside it.
     const busy = phase === 'working' || phase === 'stopping';
@@ -255,13 +182,11 @@ export class PromptDrawer {
               : 'Files Claude reads light up cyan. Files it edits pulse amber.';
     this.view.hidden = state.turns === 0;
     this.startNew.hidden = phase !== 'idle' || state.sessionId === undefined;
-    this.refreshAction();
   }
 
   /** Models from Claude Code itself, and the MCP button's summary of its servers. Attached skills it no longer offers are dropped. */
   setCatalog(catalog: AgentCatalog): void {
-    this.catalog = catalog;
-    this.syncModels();
+    this.composer.setCatalog(catalog);
     const servers = catalog.mcpServers;
     const count = (status: string) => servers.filter((server) => server.status === status).length;
     const parts = [
@@ -281,87 +206,33 @@ export class PromptDrawer {
       `MCP servers: ${summary}. Click to see them, reload them, and sign in, reconnect, enable or disable one.`,
       ...servers.map((server) => `${server.name}: ${server.status}${server.tools > 0 ? `, ${server.tools} tools` : ''}`),
     ].join('\n');
-    const offered = new Set(catalog.skills.map((skill) => skill.name));
-    if (catalog.known && this.attached.some((name) => !offered.has(name))) {
-      this.attached = this.attached.filter((name) => offered.has(name));
-      this.renderChips();
-    }
   }
 
   /** Which toggle in the composer bar, or the MCP button, is on. */
   setToggled(kind: DrawerToggle | undefined): void {
-    for (const toggle of [this.skillsToggle, this.historyToggle, this.mcpToggle]) toggle.setAttribute('aria-pressed', String(toggle.dataset.kind === kind));
+    this.composer.setSkillsPressed(kind === 'skills');
+    for (const toggle of [this.historyToggle, this.mcpToggle]) toggle.setAttribute('aria-pressed', String(toggle.dataset.kind === kind));
   }
 
-  /** Attaches a skill to the prompt: it pops into the row above the input. A slash command being typed is what it stands for, so that goes. */
+  /** Attaches a skill to the prompt: it pops into the row above the input. */
   attach(name: string): void {
-    if (slashQuery(this.input.value) !== undefined) {
-      this.input.value = '';
-      this.autosize();
-      this.refreshAction();
-      this.refreshSlash();
-    }
-    if (!this.attached.includes(name) && this.attached.length < MAX_SKILLS) {
-      this.attached = [...this.attached, name];
-      this.renderChips();
-      this.popIn([...this.chips.querySelectorAll('.skill-chip')].slice(-1));
-    }
-    if (this.isOpen) this.input.focus({ preventScroll: true });
+    this.composer.attach(name);
+    if (this.isOpen) this.composer.focus();
   }
 
-  detach(name: string): void {
-    this.attached = this.attached.filter((attached) => attached !== name);
-    this.renderChips();
-    this.input.focus({ preventScroll: true });
-  }
-
-  /** Attaches files to the prompt as context: each pops into the row above the input, after any skills. */
+  /** Attaches files to the prompt as context. */
   attachFiles(paths: readonly string[]): void {
-    const added = [...new Set(paths)].filter((path) => !this.files.includes(path)).slice(0, Math.max(0, MAX_FILES - this.files.length));
-    if (added.length > 0) {
-      this.files = [...this.files, ...added];
-      this.renderChips();
-      this.popIn([...this.chips.querySelectorAll('.file-chip')].slice(-added.length));
-    }
-    if (this.isOpen) this.input.focus({ preventScroll: true });
-  }
-
-  detachFile(path: string): void {
-    this.files = this.files.filter((file) => file !== path);
-    this.renderChips();
-    this.input.focus({ preventScroll: true });
+    this.composer.attachFiles(paths);
+    if (this.isOpen) this.composer.focus();
   }
 
   /** Where a dragged skill is dropped: anywhere on the composer, while the sheet is open. */
   dropRect(): DOMRect | undefined {
-    return this.isOpen ? this.form.getBoundingClientRect() : undefined;
+    return this.isOpen ? this.composer.dropRect() : undefined;
   }
 
   setDropState(state: 'ready' | 'over' | undefined): void {
-    if (state) this.form.dataset.drop = state;
-    else delete this.form.dataset.drop;
-  }
-
-  private send(): void {
-    const text = this.input.value.trim();
-    if ((!text && this.attached.length === 0 && this.files.length === 0) || !this.state || this.state.phase === 'unavailable') return;
-    if (!this.actions.submit(text, this.input.getBoundingClientRect(), [...this.attached], [...this.files])) return;
-    this.input.value = '';
-    this.attached = [];
-    this.files = [];
-    this.renderChips();
-    this.autosize();
-    this.refreshAction();
-    this.refreshSlash();
-    this.close();
-  }
-
-  /** Tells the coordinator when the prompt becomes, changes as, or stops being a slash command. */
-  private refreshSlash(): void {
-    const query = slashQuery(this.input.value);
-    if (query === this.slash) return;
-    this.slash = query;
-    this.actions.slash(query, this.input.getBoundingClientRect());
+    this.composer.setDropState(state);
   }
 
   private setOpen(open: boolean): void {
@@ -424,99 +295,9 @@ export class PromptDrawer {
       handle.addEventListener('pointercancel', end);
     });
   }
-
-  private refreshAction(): void {
-    this.action.disabled = !this.state || this.state.phase === 'unavailable' || (this.input.value.trim() === '' && this.attached.length === 0 && this.files.length === 0);
-  }
-
-  /** The models Claude Code offers, else the fallback aliases; a setting naming another model is listed too. The effort meter offers what the selected model takes. */
-  private syncModels(): void {
-    const offered = this.catalog?.known && this.catalog.models.length > 0 ? this.catalog.models.map((model) => [model.value, model.label] as const) : FALLBACK_MODELS;
-    syncSelect(this.model, offered, this.state?.options.model ?? '');
-    const choice = this.catalog?.known ? this.catalog.models.find((model) => model.value === this.model.value) : undefined;
-    this.model.title = choice?.description ?? 'Model';
-    this.effort.set(this.state?.options.effort ?? '', choice?.label ?? this.model.value, choice?.efforts);
-  }
-
-  private renderChips(): void {
-    this.chips.replaceChildren(
-      ...this.attached.map((name) => {
-        const chip = el('span', 'skill-chip');
-        chip.dataset.skill = name;
-        const icon = el('span', 'skill-chip-icon');
-        icon.setAttribute('aria-hidden', 'true');
-        const remove = button('', 'skill-chip-remove', `Detach /${name}`);
-        remove.setAttribute('aria-label', `Detach /${name}`);
-        remove.addEventListener('click', () => this.detach(name));
-        chip.append(icon, el('span', 'skill-chip-name', `/${name}`), remove);
-        return chip;
-      }),
-      ...this.files.map((path) => {
-        const chip = el('span', 'file-chip');
-        chip.dataset.path = path;
-        chip.title = path;
-        const icon = el('span', 'file-chip-icon');
-        icon.setAttribute('aria-hidden', 'true');
-        const remove = button('', 'file-chip-remove', `Detach ${path}`);
-        remove.setAttribute('aria-label', `Detach ${path}`);
-        remove.addEventListener('click', () => this.detachFile(path));
-        chip.append(icon, el('span', 'file-chip-name', fileName(path)), remove);
-        return chip;
-      }),
-    );
-    this.chips.hidden = this.attached.length === 0 && this.files.length === 0;
-    this.actions.skillsChanged([...this.attached]);
-    this.refreshAction();
-  }
-
-  /** Chips just attached pop in. */
-  private popIn(chips: readonly Element[]): void {
-    if (reducedMotion()) return;
-    for (const chip of chips) {
-      chip.animate(
-        [
-          { transform: 'scale(0.3)', opacity: 0 },
-          { transform: 'scale(1.1)', opacity: 1, offset: 0.6 },
-          { transform: 'none', opacity: 1 },
-        ],
-        { duration: 440, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
-      );
-    }
-  }
-
-  private autosize(): void {
-    this.input.style.height = 'auto';
-    this.input.style.height = `${Math.min(this.input.scrollHeight, MAX_INPUT_PX)}px`;
-  }
-}
-
-function reducedMotion(): boolean {
-  return matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-/** The text after a leading slash while nothing but the command has been typed (`/gra` → `gra`); undefined otherwise. */
-export function slashQuery(text: string): string | undefined {
-  const match = /^\s*\/(\S*)$/.exec(text);
-  return match ? match[1] : undefined;
 }
 
 /** Past the open position the sheet gives a little, less the further it is pulled. */
 function stretch(px: number): number {
   return 28 * Math.log1p(px / 28);
-}
-
-function syncSelect(select: HTMLSelectElement, choices: readonly Choice[], value: string): void {
-  const all = choices.some(([choice]) => choice === value) ? choices : [...choices, [value, value] as const];
-  const signature = all.map(([choice, label]) => `${choice}=${label}`).join('|');
-  if (select.dataset.signature !== signature) {
-    select.replaceChildren(
-      ...all.map(([choice, label]) => {
-        const option = el('option', undefined, label);
-        option.value = choice;
-        return option;
-      }),
-    );
-    select.dataset.signature = signature;
-  }
-  select.value = value;
 }
