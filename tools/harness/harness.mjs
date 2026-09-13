@@ -1301,6 +1301,154 @@ try {
   }
   report.checks.mcpView = mcpView;
 
+  // The Flat view: the tab at the top middle flies every file out of its directory onto an orbit round the core, a solid
+  // sphere wearing its file type's icon with its name under it, while the import lines rise over the orbits as neurons
+  // that fire while Claude thinks. Files take hover and clicks as in the Nested view, a live update keeps every file's
+  // place, the loop parks at rest, the arrow keys move between the tabs, and Nested brings back the directory in view.
+  const flatView = {};
+  const settledIn = (mix) => `__orbit.world().uniforms.uFlatMix.value === ${mix} && !__orbit.world().morphing && !__orbit.world().focus.animating`;
+  const tabCenter = (view) => evaluate(`(() => { const r = document.querySelector('.view-tab[data-view="${view}"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top }; })()`);
+  await evaluate('__host.pause()');
+  await sleep(800);
+  const nestedFocus = await evaluate('__orbit.world().layout.clusters.labels[__orbit.world().focus.cluster]');
+  const flatTab = await tabCenter('flat');
+  flatView.tabsTopMiddle = Math.abs(flatTab.x - width / 2) < 120 && flatTab.top < 40;
+  await click(flatTab.x, flatTab.y);
+  await sleep(300);
+  flatView.midFlight = await evaluate(`(() => { const u = __orbit.world().uniforms.uFlatMix.value; return u > 0 && u < 1; })()`);
+  await screenshot('8a-flat-flight.png');
+  flatView.arrived = await waitFor(evaluate, settledIn(1), 5000);
+  await sleep(500);
+  Object.assign(
+    flatView,
+    await evaluate(`(() => {
+      const w = __orbit.world();
+      const shown = (selector) => [...document.querySelectorAll(selector)].filter((label) => !label.hidden);
+      return {
+        mode: w.mode,
+        tabSelected: document.querySelector('.view-tab[data-view="flat"]').getAttribute('aria-selected') === 'true',
+        hint: document.querySelector('.hint').textContent,
+        breadcrumb: [...document.querySelectorAll('.crumbs > *')].map((crumb) => crumb.textContent),
+        fileNames: shown('.labels .label-file').length,
+        orbitNames: shown('.labels .label-cluster').map((label) => label.querySelector('.label-text').textContent),
+      };
+    })()`),
+  );
+  await screenshot('8b-flat.png');
+
+  // The front-most file well inside the viewport and clear of Claude's star.
+  const flatFile = await evaluate(`(() => {
+    const w = __orbit.world(); const n = w.graph.nodes;
+    const id = (i) => n.dirs[n.dirIndex[i]] === '.' ? n.names[i] : n.dirs[n.dirIndex[i]] + '/' + n.names[i];
+    const star = w.claudePosition(w.claudeIdAt(0)); const s0 = star ? __orbit.project(star.x, star.y, star.z) : { x: -1e9, y: -1e9 };
+    let best = null;
+    for (let i = 0; i < n.count; i++) {
+      const p = w.positionOf(i); const s = __orbit.project(p.x, p.y, p.z);
+      if (s.depth <= -1 || s.depth >= 1 || s.x < 420 || s.x > innerWidth - 420 || s.y < 240 || s.y > innerHeight - 240 || Math.hypot(s.x - s0.x, s.y - s0.y) < 70) continue;
+      if (!best || s.depth < best.depth) best = { id: id(i), x: s.x, y: s.y, depth: s.depth };
+    }
+    return best;
+  })()`);
+  if (flatFile) {
+    // Scrolled in toward a file, which stays under the pointer: the zoom closes in on it, the spheres grow, their icons come
+    // in and names show under them.
+    await mouse('mouseMoved', flatFile.x, flatFile.y);
+    await sleep(600);
+    for (let k = 0; k < 10; k++) {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: flatFile.x, y: flatFile.y, deltaX: 0, deltaY: -220 });
+      await sleep(40);
+    }
+    await sleep(1200);
+    flatView.close = await evaluate(`({ fileNames: [...document.querySelectorAll('.labels .label-file')].filter((label) => !label.hidden).length, distance: +__orbit.camera().distance.toFixed(1) })`);
+    await screenshot('8b2-flat-close.png');
+    await mouse('mouseMoved', flatFile.x, flatFile.y);
+    await sleep(600);
+    const tooltip = await tooltipTitle();
+    await click(flatFile.x, flatFile.y);
+    await sleep(600);
+    const menu = await evaluate('__orbit.fileMenu()');
+    flatView.file = { aimedAt: flatFile.id, tooltip, hovered: tooltip === flatFile.id, menuOpened: menu.open, menuMatchesHover: menu.path === tooltip };
+    await screenshot('8c-flat-file-menu.png');
+    await key('Escape', 'Escape', 27);
+    await sleep(500);
+    flatView.file.menuClosedByEscape = !(await evaluate('__orbit.fileMenu().open'));
+    flatView.file.stillFlat = (await evaluate('__orbit.world().mode')) === 'flat';
+  }
+
+  // Neurons firing, against the parked frame, with the HUD and labels out of the way.
+  await mouse('mouseMoved', 2, 2);
+  await evaluate(`for (const e of document.querySelectorAll('.hud, .labels')) e.style.visibility = 'hidden'`);
+  await sleep(4000);
+  await capture('flatRest');
+  await evaluate('__host.think()');
+  let neuronsLit = 0;
+  for (let k = 0; k < 4; k++) {
+    await sleep(450);
+    await capture(`flatThink${k}`, k === 1 ? '8d-flat-thinking.png' : undefined);
+    neuronsLit = Math.max(neuronsLit, await violetGain('flatRest', `flatThink${k}`));
+  }
+  flatView.neuronsLitPixels = neuronsLit;
+  await evaluate(`for (const e of document.querySelectorAll('.hud, .labels')) e.style.visibility = ''`);
+
+  // A live update in the Flat view: a file joins beside one on its orbit, and every kept file stays where it was.
+  const flatPlan = await evaluate(`(() => {
+    const w = __orbit.world(); const n = w.graph.nodes; const i = Math.floor(n.count / 2);
+    const id = n.dirs[n.dirIndex[i]] === '.' ? n.names[i] : n.dirs[n.dirIndex[i]] + '/' + n.names[i];
+    const dir = n.dirs[n.dirIndex[i]];
+    const positions = Array.from({ length: n.count }, (_, k) => { const p = w.positionOf(k); return [p.x, p.y, p.z]; });
+    const ids = Array.from({ length: n.count }, (_, k) => n.dirs[n.dirIndex[k]] === '.' ? n.names[k] : n.dirs[n.dirIndex[k]] + '/' + n.names[k]);
+    window.__flatBefore = new Map(ids.map((file, k) => [file, positions[k]]));
+    return { sibling: id, added: (dir === '.' ? '' : dir + '/') + '__harness_flat.ts' };
+  })()`);
+  const flatLayoutsBefore = (await evaluate('__host.received')).filter((type) => type === 'layoutComputed').length;
+  const flatSent = await evaluate(`__host.update(${JSON.stringify({ add: [{ id: flatPlan.added, imports: [flatPlan.sibling] }] })})`);
+  await sleep(900);
+  flatView.liveUpdate = {
+    sent: flatSent,
+    ...(await evaluate(`(() => {
+      const w = __orbit.world(); const n = w.graph.nodes;
+      const addedDir = ${JSON.stringify(flatPlan.added)}.includes('/') ? ${JSON.stringify(flatPlan.added)}.slice(0, ${JSON.stringify(flatPlan.added)}.lastIndexOf('/')) : '.';
+      let moved = 0, added = null;
+      const siblings = [];
+      for (let k = 0; k < n.count; k++) {
+        const file = n.dirs[n.dirIndex[k]] === '.' ? n.names[k] : n.dirs[n.dirIndex[k]] + '/' + n.names[k];
+        const p = w.positionOf(k);
+        if (file === ${JSON.stringify(flatPlan.added)}) added = p;
+        else if (n.dirs[n.dirIndex[k]] === addedDir) siblings.push(p);
+        const before = __flatBefore.get(file);
+        if (before && Math.hypot(p.x - before[0], p.y - before[1], p.z - before[2]) > 1e-3) moved++;
+      }
+      const nearest = added === null ? Infinity : Math.min(...siblings.map((p) => Math.hypot(added.x - p.x, added.y - p.y, added.z - p.z)));
+      return {
+        stillFlat: w.mode === 'flat' && w.uniforms.uFlatMix.value === 1,
+        keptFilesMoved: moved,
+        addedPlaced: added !== null,
+        nearestSiblingDistance: +nearest.toFixed(1),
+        besideSibling: nearest < 20,
+      };
+    })()`)),
+    newLayoutComputed: (await evaluate('__host.received')).filter((type) => type === 'layoutComputed').length - flatLayoutsBefore,
+  };
+
+  // At rest in the Flat view, the loop parks as in the Nested one.
+  await sleep(4500);
+  const flatIdleA = await evaluate('__orbit.debug.frames');
+  await sleep(1500);
+  flatView.framesWhileIdle = (await evaluate('__orbit.debug.frames')) - flatIdleA;
+
+  // The arrow keys move between the tabs, and switch the view with them.
+  await evaluate(`document.querySelector('.view-tab[data-view="flat"]').focus()`);
+  await key('ArrowLeft', 'ArrowLeft', 37);
+  await sleep(100);
+  flatView.arrowKeys = await evaluate(`__orbit.view() === 'nested' && document.activeElement === document.querySelector('.view-tab[data-view="nested"]')`);
+  flatView.backToNested = await waitFor(evaluate, settledIn(0), 5000);
+  await sleep(400);
+  const nestedAgain = await evaluate(`(() => { const w = __orbit.world(); return { mode: w.mode, focus: w.layout.clusters.labels[w.focus.cluster], hint: document.querySelector('.hint').textContent }; })()`);
+  flatView.nestedAgain = { ...nestedAgain, sameDirectory: nestedAgain.mode === 'nested' && nestedAgain.focus === nestedFocus };
+  await evaluate('document.activeElement?.blur()');
+  await screenshot('8e-back-to-nested.png');
+  report.checks.flatView = flatView;
+
   // Hidden panel: the rAF loop must stop entirely.
   await evaluate('__host.setVisible(false)');
   await sleep(400);
