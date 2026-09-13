@@ -12,15 +12,19 @@ const SKIPPED_MESSAGE = 'The user skipped these questions in Orbit.';
 
 export type TurnOutcome = 'done' | 'interrupted' | 'failed';
 
-/** Conversation-level events, independent of how the agent is run. */
+/** Conversation-level events, independent of how the agent is run. `agent`: a subagent did it, named by the id of the tool call running it. */
 export type SessionEvent =
   /** `skills`: invoked with the prompt, when any are attached; `files`: attached to it as context. */
   | { type: 'prompt'; text: string; skills?: string[]; files?: string[] }
-  | { type: 'thinking' }
-  | { type: 'text'; text: string }
-  | { type: 'toolUse'; name: string; input: Record<string, unknown> }
-  | { type: 'toolError'; tool: string; message: string }
-  | { type: 'toolDone'; tool: string }
+  | { type: 'thinking'; agent?: string }
+  | { type: 'text'; text: string; agent?: string }
+  | { type: 'toolUse'; name: string; input: Record<string, unknown>; agent?: string }
+  | { type: 'toolError'; tool: string; message: string; agent?: string }
+  | { type: 'toolDone'; tool: string; agent?: string }
+  /** A subagent's first sign of work: `name` is its type (the call's `subagent_type`), else the tool's; `detail` what it was asked. */
+  | { type: 'agentStart'; agent: string; name: string; detail: string }
+  /** Its tool call returned, or the turn ended before it did. */
+  | { type: 'agentEnd'; agent: string; name: string; detail: string; outcome: TurnOutcome }
   | { type: 'turnEnd'; outcome: TurnOutcome; durationMs: number; costUsd: number; message?: string }
   | { type: 'notice'; level: 'info' | 'warn' | 'error'; text: string };
 
@@ -45,6 +49,11 @@ export interface ConversationSink {
   event(conversation: Conversation, event: SessionEvent): void;
 }
 
+/** The `agent` of what a subagent did, from the id of the tool call running it; nothing for the conversation's own. */
+function agentOf(parent: string | undefined): { agent?: string } {
+  return parent === undefined ? {} : { agent: parent };
+}
+
 /**
  * One agent conversation: prompts, turns, permission requests, interrupts and resumption. It owns its agent process
  * (restarting it with the conversation id when options change, it died, or it was let go while idle) and knows
@@ -66,7 +75,10 @@ export class Conversation {
   private turnOpen = false;
   /** The one request waiting for an answer, with what the webview never sees: the tool input and the agent's suggestions. */
   private permission: (PermissionRequest & { input: Record<string, unknown>; suggestions: PermissionUpdate[] }) | undefined;
-  private readonly toolNames = new Map<string, string>();
+  /** This turn's tool calls by id: the tool, named again when its result comes, and what a subagent it runs is called. */
+  private readonly tools = new Map<string, { name: string; agentName: string; detail: string }>();
+  /** This turn's subagents, by the id of the tool call running each: true until that call returns. */
+  private readonly agents = new Map<string, boolean>();
   private interruptTimer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
 
@@ -249,6 +261,8 @@ export class Conversation {
   }
 
   private onAgentEvent(event: AgentEvent): void {
+    // A subagent's first sign of work announces it, ahead of what it did.
+    if ('parent' in event && event.parent !== undefined) this.startSubagent(event.parent);
     switch (event.type) {
       case 'init':
         if (this.sessionId !== event.sessionId) this.context.log.info(`conversation ${event.sessionId}`);
@@ -258,20 +272,24 @@ export class Conversation {
         if (event.mcpServers) this.context.mcpStatuses(event.mcpServers);
         break;
       case 'thinking':
-        this.sink.event(this, { type: 'thinking' });
+        this.sink.event(this, { type: 'thinking', ...agentOf(event.parent) });
         break;
       case 'text':
-        this.sink.event(this, { type: 'text', text: event.text });
+        this.sink.event(this, { type: 'text', text: event.text, ...agentOf(event.parent) });
         break;
-      case 'toolUse':
-        this.toolNames.set(event.id, event.name);
-        this.sink.event(this, { type: 'toolUse', name: event.name, input: event.input });
+      case 'toolUse': {
+        const type = event.input.subagent_type;
+        this.tools.set(event.id, { name: event.name, agentName: typeof type === 'string' && type ? type : event.name, detail: summarizeTool(event.name, event.input).detail });
+        this.sink.event(this, { type: 'toolUse', name: event.name, input: event.input, ...agentOf(event.parent) });
         break;
+      }
       case 'toolError':
-        this.sink.event(this, { type: 'toolError', tool: this.toolNames.get(event.toolUseId) ?? 'Tool', message: event.message });
+        this.sink.event(this, { type: 'toolError', tool: this.tools.get(event.toolUseId)?.name ?? 'Tool', message: event.message, ...agentOf(event.parent) });
+        this.endSubagent(event.toolUseId, 'failed');
         break;
       case 'toolDone':
-        this.sink.event(this, { type: 'toolDone', tool: this.toolNames.get(event.toolUseId) ?? 'Tool' });
+        this.sink.event(this, { type: 'toolDone', tool: this.tools.get(event.toolUseId)?.name ?? 'Tool', ...agentOf(event.parent) });
+        this.endSubagent(event.toolUseId, 'done');
         break;
       case 'permissionRequest': {
         const detail = summarizeTool(event.tool, event.input).detail || event.description || '';
@@ -294,6 +312,22 @@ export class Conversation {
     }
   }
 
+  /** A subagent shows its first sign of work: announced once, named after the tool call running it. */
+  private startSubagent(id: string): void {
+    if (this.agents.has(id)) return;
+    this.agents.set(id, true);
+    const call = this.tools.get(id);
+    this.sink.event(this, { type: 'agentStart', agent: id, name: call?.agentName ?? 'Subagent', detail: call?.detail ?? '' });
+  }
+
+  /** A tool call returned, or its turn ended: a subagent it ran is done. */
+  private endSubagent(id: string, outcome: TurnOutcome): void {
+    if (this.agents.get(id) !== true) return;
+    this.agents.set(id, false);
+    const call = this.tools.get(id);
+    this.sink.event(this, { type: 'agentEnd', agent: id, name: call?.agentName ?? 'Subagent', detail: call?.detail ?? '', outcome });
+  }
+
   private onAgentExit(exit: AgentExit): void {
     this.agent = undefined;
     this.agentOptions = undefined;
@@ -314,7 +348,10 @@ export class Conversation {
     clearTimeout(this.interruptTimer);
     this.interruptTimer = undefined;
     this.permission = undefined;
-    this.toolNames.clear();
+    // Subagents still out end with the turn, ahead of its turnEnd.
+    for (const [id, running] of this.agents) if (running) this.endSubagent(id, outcome);
+    this.agents.clear();
+    this.tools.clear();
     if (this.turnOpen) {
       this.turnOpen = false;
       this.turns++;
