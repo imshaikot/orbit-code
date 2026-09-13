@@ -1,8 +1,9 @@
 # Orbit Code
 
-Your codebase as a 3D dependency graph, with Claude Code working through it live. This repository holds the VS Code extension and the editor-agnostic packages it is built from.
+Your codebase as a 3D dependency graph, with Claude Code working through it live. This repository holds the VS Code extension, the desktop app, and the editor-agnostic packages both are built from.
 
 - **Use it in VS Code:** [apps/vscode/README.md](apps/vscode/README.md)
+- **Use it as a desktop app:** [apps/desktop/README.md](apps/desktop/README.md)
 - **Index a repository from the command line:** [packages/indexer/README.md](packages/indexer/README.md)
 
 ## Layout
@@ -10,16 +11,17 @@ Your codebase as a 3D dependency graph, with Claude Code working through it live
 | Path | Package | What it is |
 | --- | --- | --- |
 | `apps/vscode` | `orbit-code` | The VS Code extension, packaged as a `.vsix` for the Marketplace and Open VSX |
+| `apps/desktop` | `@orbit-code/desktop` | The desktop app: Electron, with installers for macOS, Windows and Linux |
 | `packages/protocol` | `@orbit-code/protocol` | The messages between a host, the webview and the workers |
 | `packages/graph` | `@orbit-code/graph` | File kinds, the columnar graph, the directory tree, layout extension |
 | `packages/common` | `@orbit-code/common` | Events, disposables, logging and batching, for any host |
 | `packages/indexer` | `@orbit-code/indexer` | Workspace to dependency graph, as a worker thread and a CLI; published to npm |
 | `packages/agent` | `@orbit-code/agent` | Claude Code conversations over the `claude` CLI |
-| `packages/core` | `@orbit-code/core` | The editor-agnostic host: the graph, live updates, Claude's activity |
+| `packages/core` | `@orbit-code/core` | The editor-agnostic host: the graph, live updates, Claude's activity, and the controller every host shares |
 | `packages/webview` | `@orbit-code/webview` | The UI: the three.js scene and the HUD |
 | `tools/harness` | `@orbit-code/harness` | Headless Chrome checks of the webview against a simulated host |
 
-Each project is tagged with the runtime its code needs (neutral, node, browser or vscode), and `yarn boundaries` keeps every import within those lines. Only `apps/vscode` touches the VS Code API, so a host for another editor can reuse the engine, the protocol and the webview.
+Each project is tagged with the runtime its code needs (neutral, node, browser, vscode or electron), and `yarn boundaries` keeps every import within those lines. Only `apps/vscode` touches the VS Code API and only `apps/desktop` touches Electron's, so both hosts share the engine, the controller, the protocol and the webview.
 
 ## Development
 
@@ -33,6 +35,9 @@ yarn watch            # rebuild on change
 yarn harness          # webview checks in headless Chrome
 yarn smoke            # end-to-end in a real VS Code
 yarn package          # dist/apps/vscode/orbit-code-<version>.vsix
+yarn desktop --folder .   # build and open this repository in the desktop app
+yarn desktop:smoke    # end-to-end in the desktop app
+yarn desktop:package  # dist/apps/desktop: a dmg and zip, an NSIS installer or an AppImage
 yarn nx graph         # the project graph
 ```
 
@@ -40,7 +45,7 @@ Nx 23 runs and caches the tasks; Yarn 4 workspaces link the packages, which impo
 
 ## Releases
 
-Record a change worth releasing with `yarn nx release plan <bump> --projects=<project>`, and commit the plan with it. `yarn nx release --skip-publish` then applies the plans: it bumps versions, writes each project's `CHANGELOG.md`, commits and tags, `v<version>` for the extension and `<project>-v<version>` for an npm package. Pushing a tag runs `.github/workflows/release.yml`, which publishes that release.
+Record a change worth releasing with `yarn nx release plan <bump> --projects=<project>`, and commit the plan with it. `yarn nx release --skip-publish` then applies the plans: it bumps versions, writes each project's `CHANGELOG.md`, commits and tags, `v<version>` for the extension, `desktop-v<version>` for the desktop app and `<project>-v<version>` for an npm package. Pushing a tag runs `.github/workflows/release.yml`, which publishes that release.
 
 ## License
 
