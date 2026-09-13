@@ -51,6 +51,11 @@ interface Pending {
   applyAt: number;
 }
 
+/** The key a subagent's star is drawn under: its conversation's key, then the id of the tool call running it. */
+function subagentKey(key: string, agent: string): string {
+  return `${key}/${agent}`;
+}
+
 /**
  * Everything drawn for one graph + frozen layout, and how session activity animates it. The view looks
  * into one directory at a time: its files and its sub-directory bubbles, with the imports between them.
@@ -81,8 +86,10 @@ export class World {
   private readonly pending: Pending[] = [];
   /** A read's glow is written when its comet lands, never at launch: shaders draw a time ahead of the clock as unlit, which would put out a glow already there. */
   private landings: Landing[] = [];
-  /** Conversations with a turn drawn on the graph: rest comes when the last of them ends. */
+  /** Conversations with a turn drawn on the graph, and their subagents at work: rest comes when the last of them ends. */
   private active = new Set<string>();
+  /** Subagents with a star out, by their key (`subagentKey`), with the conversation each works for. */
+  private subagents = new Map<string, string>();
   /** The conversation that last touched a file, whose star follows files a live update adds mid-turn. */
   private lastKey: string | undefined;
   private lastQueuedAt = -Infinity;
@@ -167,9 +174,14 @@ export class World {
     return this.mcp.count;
   }
 
-  /** Claude's stars drawn right now: one, plus one per further conversation with a turn under way. */
+  /** Claude's stars drawn right now: one, plus one per further conversation with a turn under way and one per subagent. */
   get claudeStars(): number {
     return this.claude.count;
+  }
+
+  /** The stable ids of the subagents' stars drawn right now, those on their way back included. */
+  get claudeAgentStars(): number[] {
+    return this.claude.agentIds;
   }
 
   /** The stable id of the star a click found at `index` in the last pick, for the spark popup and Follow. */
@@ -180,6 +192,11 @@ export class World {
   /** Where the star `id` is right now, or undefined once it has faded out and gone. */
   claudePosition(id: number): THREE.Vector3 | undefined {
     return this.claude.positionById(id);
+  }
+
+  /** The subagent the star `id` draws: its conversation, the id of the tool call running it, and its type. Undefined for a conversation's own star. */
+  claudeAgent(id: number): { key: string; agent: string; name: string | undefined } | undefined {
+    return this.claude.agentOf(id);
   }
 
   /** The star the camera follows, or undefined. */
@@ -216,6 +233,7 @@ export class World {
       this.mcp.settle(this.uniforms.uTime.value);
       this.claude.rest();
       this.active.clear();
+      this.subagents.clear();
     }
   }
 
@@ -325,6 +343,8 @@ export class World {
     if (picked.kind === 'claude') {
       const id = this.claude.idAt(picked.index);
       const following = id !== undefined && id === this.followedStarId;
+      const agent = id === undefined ? undefined : this.claude.agentOf(id);
+      if (agent) return { title: agent.name ?? 'Subagent', detail: following ? 'A subagent, followed. Click for its output.' : 'A subagent. Click for its output, or to follow it.' };
       return { title: 'Claude', detail: following ? 'Following. Click for options.' : 'Click to follow, or see options.' };
     }
     return undefined;
@@ -463,10 +483,11 @@ export class World {
     this.touched = previous.touched.flatMap((touch) => (node(touch.node) >= 0 ? [{ ...touch, node: node(touch.node) }] : []));
     this.landings = previous.landings.flatMap((landing) => (node(landing.node) >= 0 ? [{ ...landing, node: node(landing.node) }] : []));
     for (const { event, key, applyAt } of previous.pending) {
-      if (event.kind === 'turnEnd' || event.kind === 'thinking' || event.kind === 'mcp') this.pending.push({ event, key, applyAt });
+      if (!('node' in event)) this.pending.push({ event, key, applyAt });
       else if (node(event.node) >= 0) this.pending.push({ event: { ...event, node: node(event.node) }, key, applyAt });
     }
     this.active = new Set(previous.active);
+    this.subagents = new Map(previous.subagents);
     this.followedStarId = previous.followedStarId;
     this.lastKey = previous.lastKey;
     this.lastQueuedAt = previous.lastQueuedAt;
@@ -504,12 +525,21 @@ export class World {
       if (animate) this.think(t);
       return;
     }
+    if (event.kind === 'agentStart') {
+      this.startAgent(key, event.agent, event.name, t);
+      return;
+    }
+    if (event.kind === 'agentEnd') {
+      this.endAgent(subagentKey(key, event.agent), t);
+      return;
+    }
     if (event.kind === 'mcp') {
       // Hidden panels skip it, like comets: its pulses are timed on a clock that stands still while hidden.
       if (!animate) return;
-      this.active.add(key);
-      this.claude.star(key);
-      if (event.phase === 'call') this.mcp.call(event.server, event.tool, t, key);
+      const by = event.agent === undefined ? key : this.startAgent(key, event.agent, undefined, t);
+      this.active.add(by);
+      this.claude.star(by);
+      if (event.phase === 'call') this.mcp.call(event.server, event.tool, t, by);
       else this.mcp.answer(event.server, event.phase === 'done', t);
       if (!this.working) this.mcp.settle(t);
       this.animateUntil = Math.max(this.animateUntil, t + 1.5);
@@ -517,9 +547,10 @@ export class World {
       return;
     }
     if (event.kind === 'turnEnd') {
+      for (const [sub, owner] of [...this.subagents]) if (owner === key) this.endAgent(sub, t);
       this.active.delete(key);
-      // Comets still in flight light nothing: lit after the rest, their files would never fade.
-      this.landings = this.landings.filter((landing) => landing.key !== key);
+      // Comets still in flight, its subagents' too, light nothing: lit after the rest, their files would never fade.
+      this.landings = this.landings.filter((landing) => landing.key !== key && !landing.key.startsWith(subagentKey(key, '')));
       this.mcp.settle(t, key);
       this.claude.goHome(key);
       if (this.active.size === 0) {
@@ -536,13 +567,15 @@ export class World {
     const node = event.node;
     if (node < 0 || node >= this.graph.nodes.count) return;
     const cluster = this.layout.clusterOf[node];
-    this.active.add(key);
-    this.lastKey = key;
+    // A subagent's read or edit moves its own star, which comes out of the conversation's if the subagent is new here.
+    const by = event.agent === undefined ? key : this.startAgent(key, event.agent, undefined, t);
+    this.active.add(by);
+    this.lastKey = by;
 
     if (event.kind === 'read' && animate) {
-      // The comet leaves from where the conversation's star is, before the star sets off after it.
-      const flight = this.particles.launch(this.claude.star(key).position, this.nodePosition(node), t);
-      this.landings.push({ node, at: flight.landsAt, key });
+      // The comet leaves from where the star is, before the star sets off after it.
+      const flight = this.particles.launch(this.claude.star(by).position, this.nodePosition(node), t);
+      this.landings.push({ node, at: flight.landsAt, key: by });
       this.animateUntil = Math.max(this.animateUntil, flight.goneAt, flight.landsAt + 2.5);
     } else if (event.kind === 'read') {
       this.state.read(node, t);
@@ -555,7 +588,29 @@ export class World {
     }
 
     this.remember(node, event.kind, t);
-    this.moveClaude(node, event.kind, t, key);
+    this.moveClaude(node, event.kind, t, by);
+    this.labelsDirty = true;
+  }
+
+  /** The key the subagent `agent` of the conversation `key` is drawn under; the first time it is seen, its star comes out of the conversation's. */
+  private startAgent(key: string, agent: string, name: string | undefined, t: number): string {
+    const sub = subagentKey(key, agent);
+    if (!this.subagents.has(sub)) {
+      this.subagents.set(sub, key);
+      this.active.add(sub);
+      this.animateUntil = Math.max(this.animateUntil, t + 1);
+    }
+    this.claude.spawn(sub, key, agent, name);
+    return sub;
+  }
+
+  /** A subagent is done: its star goes back into its conversation's, and the MCP stations orbiting it leave. */
+  private endAgent(sub: string, t: number): void {
+    if (!this.subagents.delete(sub)) return;
+    this.active.delete(sub);
+    this.mcp.settle(t, sub);
+    this.claude.recall(sub);
+    this.animateUntil = Math.max(this.animateUntil, t + 1.2);
     this.labelsDirty = true;
   }
 
@@ -574,11 +629,11 @@ export class World {
     this.landings = flying;
   }
 
-  /** The conversation's star moves over the file it works on, at the scale of the directory in view, and flares cyan for a read or amber for an edit. */
+  /** The conversation's or subagent's star moves over the file it works on, at the scale of the directory in view, and flares cyan for a read or amber for an edit. */
   private moveClaude(node: number, kind: 'read' | 'edit', t: number, key: string): void {
     const point = this.nodePosition(node);
     point.y += Math.max(3, this.layout.clusters.radii[this.focus.cluster] * 0.1);
-    this.claude.star(key).workOn(point, kind, t);
+    this.claude.workOn(key, point, kind, t);
   }
 
   private labelsInside(cluster: number): LabelSpec[] {

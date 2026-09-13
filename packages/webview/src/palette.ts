@@ -31,6 +31,8 @@ export const PALETTE = {
   think: hex('#c9a8ff'),
   claudeCore: hex('#f6f3ff'),
   claudeHalo: hex('#a58bff'),
+  /** A subagent's star, and the line back to its conversation's: orchid, beside Claude's violet. */
+  agentHalo: hex('#e38bff'),
   /**
    * An MCP server Claude calls, and the calls travelling to it. Lime, to stay apart from read cyan, edit amber and the
    * violets in OKLab: normal vision ΔE ≥ 19, protanopia ≥ 17, deuteranopia ≥ 12.
