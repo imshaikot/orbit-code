@@ -14,6 +14,7 @@ Directories are bubbles, files are nodes, imports are lines. Files Claude reads 
 - **MCP servers.** The MCP button at the top right of the drawer shows every MCP server Claude Code loads, and whether it is connected, needs sign-in, failed or is disabled. Reload them, or sign in, reconnect, enable or disable one; the change is saved in your Claude Code settings, as `/mcp` saves it.
 - **File actions.** Click a file to view its diff, edit it inline, rename it, delete it or attach it to a prompt.
 - **Follow Spark.** Click Claude's star and the camera follows it.
+- **Subagents.** When Claude hands work to a subagent, a smaller star comes out of Claude's and moves over the files the subagent reads and edits. Click it to read the subagent's output as it comes.
 
 ## Requirements
 
