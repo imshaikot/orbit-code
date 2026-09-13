@@ -6,6 +6,7 @@
 //   system/thinking_tokens  every ~50 tokens while Claude thinks (estimated_tokens), before the thinking block
 //   assistant             one content block per envelope (thinking | text | tool_use); thinking text is often empty
 //   user                  tool_result blocks, `is_error` on failures
+//   parent_tool_use_id    set on a subagent's assistant, user and thinking_tokens envelopes: the id of the Task call running it
 //   system/permission_denied  a tool call the permission mode refused outright
 //   control_request       can_use_tool, when --permission-prompt-tool stdio routes prompts to us
 //   control_response      answers to our own control requests (interrupt; initialize and mcp_status for the catalog)
@@ -30,13 +31,13 @@ export type DecisionClassification = 'user_temporary' | 'user_permanent' | 'user
 export type AgentEvent =
   /** `mcpServers` when the envelope lists them: the servers of this session and how they connected. */
   | { type: 'init'; sessionId: string; model?: string; version?: string; permissionMode?: string; mcpServers?: Array<{ name: string; status: string }> }
-  /** A thinking block, which arrives whole once the thought is done. */
-  | { type: 'thinking' }
-  | { type: 'text'; text: string }
-  | { type: 'toolUse'; id: string; name: string; input: Record<string, unknown> }
-  | { type: 'toolError'; toolUseId: string; message: string }
+  /** A thinking block, which arrives whole once the thought is done. `parent`, here and below: a subagent's, the id of the tool call running it. */
+  | { type: 'thinking'; parent?: string }
+  | { type: 'text'; text: string; parent?: string }
+  | { type: 'toolUse'; id: string; name: string; input: Record<string, unknown>; parent?: string }
+  | { type: 'toolError'; toolUseId: string; message: string; parent?: string }
   /** A tool call that returned without an error. */
-  | { type: 'toolDone'; toolUseId: string }
+  | { type: 'toolDone'; toolUseId: string; parent?: string }
   /** `suggestions`: what the CLI would apply for "don't ask again" (`permission_suggestions`), to send back as `updatedPermissions`. */
   | { type: 'permissionRequest'; requestId: string; tool: string; input: Record<string, unknown>; description?: string; suggestions: PermissionUpdate[] }
   | { type: 'controlResponse'; requestId: string; ok: boolean; error?: string }
@@ -103,8 +104,8 @@ export function parseLine(line: string): AgentEvent[] {
 }
 
 function parseSystem(message: Json): AgentEvent[] {
-  // Progress every few dozen tokens while Claude thinks, well before the thinking block itself.
-  if (message.subtype === 'thinking_tokens') return message.parent_tool_use_id ? [] : [{ type: 'thinking' }];
+  // Progress every few dozen tokens while Claude, or a subagent of its, thinks, well before the thinking block itself.
+  if (message.subtype === 'thinking_tokens') return [{ type: 'thinking', ...parentOf(message) }];
   if (message.subtype === 'init' && typeof message.session_id === 'string') {
     return [
       {
@@ -123,35 +124,40 @@ function parseSystem(message: Json): AgentEvent[] {
 }
 
 function parseAssistant(message: Json): AgentEvent[] {
-  // Subagent traffic (parent_tool_use_id set) is not the main conversation.
-  if (message.parent_tool_use_id) return [];
   const content = isObject(message.message) ? message.message.content : undefined;
   if (!Array.isArray(content)) return [];
+  const parent = parentOf(message);
   const events: AgentEvent[] = [];
   for (const block of content) {
     if (!isObject(block)) continue;
     if (block.type === 'thinking' || block.type === 'redacted_thinking') {
       // The block itself is the signal: Claude Code can leave its text empty.
-      events.push({ type: 'thinking' });
+      events.push({ type: 'thinking', ...parent });
     } else if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
-      events.push({ type: 'text', text: block.text });
+      events.push({ type: 'text', text: block.text, ...parent });
     } else if (block.type === 'tool_use' && typeof block.id === 'string' && typeof block.name === 'string') {
-      events.push({ type: 'toolUse', id: block.id, name: block.name, input: isObject(block.input) ? block.input : {} });
+      events.push({ type: 'toolUse', id: block.id, name: block.name, input: isObject(block.input) ? block.input : {}, ...parent });
     }
   }
   return events;
 }
 
 function parseToolResults(message: Json): AgentEvent[] {
-  if (message.parent_tool_use_id) return [];
   const content = isObject(message.message) ? message.message.content : undefined;
   if (!Array.isArray(content)) return [];
+  const parent = parentOf(message);
   const events: AgentEvent[] = [];
   for (const block of content) {
     if (!isObject(block) || block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') continue;
-    events.push(block.is_error === true ? { type: 'toolError', toolUseId: block.tool_use_id, message: resultText(block.content) } : { type: 'toolDone', toolUseId: block.tool_use_id });
+    events.push(block.is_error === true ? { type: 'toolError', toolUseId: block.tool_use_id, message: resultText(block.content), ...parent } : { type: 'toolDone', toolUseId: block.tool_use_id, ...parent });
   }
   return events;
+}
+
+/** A subagent's traffic names the tool call running it (`parent_tool_use_id`); the conversation's own names none. */
+function parentOf(message: Json): { parent?: string } {
+  const parent = string(message.parent_tool_use_id);
+  return parent ? { parent } : {};
 }
 
 function parseControlRequest(message: Json): AgentEvent[] {
