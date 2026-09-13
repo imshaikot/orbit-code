@@ -25,7 +25,9 @@ mac:
   target: [dmg, zip]
   icon: media/icon.png
   # Ad hoc: runs on Apple silicon, but Gatekeeper warns until a Developer ID signs and notarizes it (README.md).
+  # Hardened runtime only makes sense with a real signature (notarization requires it); ad hoc, it only adds library validation.
   identity: '-'
+  hardenedRuntime: false
 win:
   target: [nsis]
   icon: media/icon.png
