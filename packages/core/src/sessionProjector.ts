@@ -23,11 +23,14 @@ type Item = { event: ActivityEvent; hash: string; id?: string } | { entry: Trans
 /**
  * Projects one conversation's events onto the loaded graph. File reads, edits and thoughts become
  * scene activity (node indices); everything but thoughts becomes transcript entries. Both leave
- * once per host tick, and a bounded transcript is kept so a reloaded webview can catch up.
+ * once per host tick, and a bounded transcript is kept so a reloaded webview can catch up. What a
+ * subagent does carries its `agent`, and its entries are kept in a history of their own.
  */
 export class SessionProjector {
   private readonly batcher = new TickBatcher<Item>(TICK_MS, (items) => this.flush(items));
   private readonly history: TranscriptEntry[] = [];
+  /** Subagents' entries, apart so that a busy subagent doesn't push the conversation's own out of the history. */
+  private readonly agentHistory: TranscriptEntry[] = [];
   private nextId = 1;
   private seq = 0;
 
@@ -38,8 +41,17 @@ export class SessionProjector {
     private readonly sink: ProjectionSink,
   ) {}
 
+  /** The conversation's entries and its subagents', in the order they were made. */
   get transcript(): readonly TranscriptEntry[] {
-    return this.history;
+    if (this.agentHistory.length === 0) return this.history;
+    const merged: TranscriptEntry[] = [];
+    let a = 0;
+    let b = 0;
+    while (a < this.history.length || b < this.agentHistory.length) {
+      const own = a < this.history.length && (b === this.agentHistory.length || this.history[a].id < this.agentHistory[b].id);
+      merged.push(own ? this.history[a++] : this.agentHistory[b++]);
+    }
+    return merged;
   }
 
   project(event: SessionEvent): void {
@@ -48,18 +60,27 @@ export class SessionProjector {
         this.append({ kind: 'prompt', text: clip(event.text), ...(event.skills?.length ? { skills: [...event.skills] } : {}), ...(event.files?.length ? { files: [...event.files] } : {}) });
         break;
       case 'text':
-        this.append({ kind: 'text', text: clip(event.text) });
+        this.append({ kind: 'text', text: clip(event.text), ...by(event.agent) });
         break;
       case 'toolUse':
-        this.toolUse(event.name, event.input);
+        this.toolUse(event.name, event.input, event.agent);
         break;
       case 'toolError':
-        this.mcpAnswered(event.tool, 'error');
-        this.append({ kind: 'notice', level: 'warn', text: `${event.tool}: ${oneLine(event.message, 240)}` });
+        this.mcpAnswered(event.tool, 'error', event.agent);
+        this.append({ kind: 'notice', level: 'warn', text: `${event.tool}: ${oneLine(event.message, 240)}`, ...by(event.agent) });
         break;
       case 'toolDone':
-        this.mcpAnswered(event.tool, 'done');
+        this.mcpAnswered(event.tool, 'done', event.agent);
         break;
+      case 'agentStart':
+      case 'agentEnd': {
+        // The subagent's own star comes out of the conversation's, and goes back once it is done.
+        const loaded = this.graph();
+        const scene: ActivityEvent = event.type === 'agentStart' ? { kind: 'agentStart', agent: event.agent, name: event.name } : { kind: 'agentEnd', agent: event.agent };
+        if (loaded) this.batcher.push({ event: scene, hash: loaded.graph.hash });
+        this.append({ kind: 'agent', agent: event.agent, name: event.name, detail: event.detail, ...(event.type === 'agentEnd' ? { outcome: event.outcome } : {}) });
+        break;
+      }
       case 'thinking': {
         const loaded = this.graph();
         if (loaded) this.batcher.push({ event: { kind: 'thinking' }, hash: loaded.graph.hash });
@@ -81,18 +102,18 @@ export class SessionProjector {
     this.batcher.dispose();
   }
 
-  private toolUse(name: string, input: Record<string, unknown>): void {
+  private toolUse(name: string, input: Record<string, unknown>, agent?: string): void {
     const summary = summarizeTool(name, input);
     const loaded = this.graph();
     const mcp = mcpToolName(name);
     if (mcp) {
       // An MCP server's tool: the scene draws the call to the server, whatever path its input names.
-      if (loaded) this.batcher.push({ event: { kind: 'mcp', ...mcp, phase: 'call' }, hash: loaded.graph.hash });
-      this.append({ kind: 'tool', tool: name, detail: summary.detail, mcp });
+      if (loaded) this.batcher.push({ event: { kind: 'mcp', ...mcp, phase: 'call', ...by(agent) }, hash: loaded.graph.hash });
+      this.append({ kind: 'tool', tool: name, detail: summary.detail, mcp, ...by(agent) });
       return;
     }
     if (!summary.path) {
-      this.append({ kind: 'tool', tool: name, detail: summary.detail });
+      this.append({ kind: 'tool', tool: name, detail: summary.detail, ...by(agent) });
       return;
     }
     const node = loaded?.resolve(summary.path);
@@ -100,25 +121,26 @@ export class SessionProjector {
       // A source file Claude writes joins the graph with the next update; link it already.
       const created = loaded && summary.action === 'edit' ? workspaceId(loaded.graph.root, summary.path) : undefined;
       const file = created !== undefined && isIndexable(created) ? created : undefined;
-      this.append({ kind: 'tool', tool: name, detail: loaded ? displayPath(loaded.graph.root, summary.path) : summary.path, action: summary.action, file });
+      this.append({ kind: 'tool', tool: name, detail: loaded ? displayPath(loaded.graph.root, summary.path) : summary.path, action: summary.action, file, ...by(agent) });
       return;
     }
     const id = loaded.graph.nodes[node].id;
-    if (summary.action) this.batcher.push({ event: { kind: summary.action, node }, hash: loaded.graph.hash, id });
-    this.append({ kind: 'tool', tool: name, detail: id, action: summary.action, file: id });
+    if (summary.action) this.batcher.push({ event: { kind: summary.action, node, ...by(agent) }, hash: loaded.graph.hash, id });
+    this.append({ kind: 'tool', tool: name, detail: id, action: summary.action, file: id, ...by(agent) });
   }
 
   /** An MCP tool's answer travels back from its server. */
-  private mcpAnswered(tool: string, phase: 'done' | 'error'): void {
+  private mcpAnswered(tool: string, phase: 'done' | 'error', agent?: string): void {
     const mcp = mcpToolName(tool);
     const loaded = this.graph();
-    if (mcp && loaded) this.batcher.push({ event: { kind: 'mcp', ...mcp, phase }, hash: loaded.graph.hash });
+    if (mcp && loaded) this.batcher.push({ event: { kind: 'mcp', ...mcp, phase, ...by(agent) }, hash: loaded.graph.hash });
   }
 
   private append(entry: NewEntry): void {
     const full = { id: this.nextId++, ...entry } as TranscriptEntry;
-    this.history.push(full);
-    if (this.history.length > HISTORY_ENTRIES) this.history.splice(0, this.history.length - HISTORY_ENTRIES);
+    const history = 'agent' in full ? this.agentHistory : this.history;
+    history.push(full);
+    if (history.length > HISTORY_ENTRIES) history.splice(0, history.length - HISTORY_ENTRIES);
     this.batcher.push({ entry: full });
   }
 
@@ -135,7 +157,8 @@ export class SessionProjector {
         // Thinking progress comes every few dozen tokens; once per tick says it all.
         if (!thinking) events.push(item.event);
         thinking = true;
-      } else if (item.hash === hash || item.event.kind === 'turnEnd' || item.event.kind === 'mcp') {
+      } else if (item.hash === hash || !('node' in item.event)) {
+        // Without a node (turnEnd, mcp, a subagent's start and end), an event means the same on any graph.
         events.push(item.event);
       } else if (loaded && item.id !== undefined) {
         // The graph changed since: node indices mean nothing now, but the file keeps its id.
@@ -146,6 +169,11 @@ export class SessionProjector {
     if (events.length > 0 && hash) this.sink.activity({ seq: ++this.seq, hash, key: this.key, events });
     if (entries.length > 0) this.sink.transcript(entries, false);
   }
+}
+
+/** The `agent` of what a subagent did; nothing for the conversation's own, whose events and entries stay as they were. */
+function by(agent: string | undefined): { agent?: string } {
+  return agent === undefined ? {} : { agent };
 }
 
 function workspaceId(root: string, filePath: string): string | undefined {
