@@ -22,6 +22,8 @@ export function createSharedUniforms(state: THREE.DataTexture, stateWidth: numbe
     /** The directories around uFocus and uFocusFrom (-1 above the root): their other sub-directories show as ghosts. */
     uFocusParent: { value: -1 },
     uFocusFromParent: { value: -1 },
+    /** 0 in the Nested view, 1 in the Flat one, eased between while the files fly from one to the other (world.ts). */
+    uFlatMix: { value: 0 },
     uHover: { value: -1 },
     uHoverCluster: { value: -1 },
     /** The file the file menu is open for, -1 for none; the clock time it was chosen; 1 while its delete waits for confirmation. */
@@ -51,6 +53,7 @@ uniform float uFocusFrom;
 uniform float uFocusMix;
 uniform float uFocusParent;
 uniform float uFocusFromParent;
+uniform float uFlatMix;
 
 float isDir(float value, float dir) {
   return abs(value - dir) < 0.5 ? 1.0 : 0.0;

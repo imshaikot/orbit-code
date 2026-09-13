@@ -20,6 +20,38 @@ const PREVIEW = 0.75;
 /** And two levels up, inside a sub-directory bubble of the directory on screen. */
 const DEEP_PREVIEW = 0.35;
 
+/**
+ * While Claude thinks, lines fire like axons. Every visible line holds a flickering violet charge for the whole burst.
+ * Lines leaving the same file (or directory) share a rhythm, so they fire together: a spike runs to the imported end
+ * and flashes where it lands, then the line rests. Every line fires within 2 s of a burst starting; after that a beat
+ * is skipped now and then, so the network sparks instead of marching. `firing(rhythm, end)`: the line's rhythm, and 0 at
+ * the importer to 1 at the imported end. The including shader declares uTime, uThinkStart and uThinkEnd.
+ */
+export const FIRING_GLSL = /* glsl */ `
+const float FIRING_FADE = ${FIRING_FADE_S.toFixed(2)};
+
+float neuronHash(float n) {
+  return fract(sin(n * 12.9898 + 78.233) * 43758.5453);
+}
+
+float firing(float rhythm, float end) {
+  if (uTime < uThinkStart || uTime > uThinkEnd + FIRING_FADE) return 0.0;
+  float envelope = smoothstep(uThinkStart, uThinkStart + 0.3, uTime) * (1.0 - smoothstep(uThinkEnd, uThinkEnd + FIRING_FADE, uTime));
+  float neuron = floor(rhythm + 0.5);
+  float charge = 0.2 + 0.08 * sin(uTime * 9.0 + neuron);
+  float period = mix(0.8, 2.0, neuronHash(neuron));
+  float local = uTime - uThinkStart - neuronHash(neuron + 0.5) * period;
+  if (local < 0.0) return charge * envelope;
+  float beat = floor(local / period);
+  if (beat > 0.0 && neuronHash(neuron * 1.618 + beat * 7.0) < 0.15) return charge * envelope;
+  float head = (local - beat * period) / 0.7; // line lengths the spike has travelled this beat
+  float behind = head - end;
+  float spike = exp(-behind * behind * 160.0) + (behind > 0.0 ? 0.6 * exp(-behind * 4.0) : 0.0);
+  float landing = exp(-(head - 1.0) * (head - 1.0) * 24.0) * smoothstep(0.6, 1.0, end);
+  return (charge + spike + landing) * envelope;
+}
+`;
+
 const VERTEX = /* glsl */ `
 ${STATE_GLSL}
 ${FOCUS_GLSL}
@@ -50,7 +82,8 @@ void main() {
     gone = smoothstep(0.0, 0.3, max(removedFor(a), removedFor(b)));
   }
   float preview = max(${PREVIEW.toFixed(2)} * shownIn(aOuter), ${DEEP_PREVIEW.toFixed(2)} * shownIn(aDeep));
-  float alpha = max(aEdge.y * max(shownIn(aEdge.x), preview), max(edit, read * 0.55)) * (1.0 - gone);
+  // Gone at once when the files leave for the Flat view, whose own lines are neurons.ts.
+  float alpha = max(aEdge.y * max(shownIn(aEdge.x), preview), max(edit, read * 0.55)) * (1.0 - gone) * (1.0 - smoothstep(0.0, 0.3, uFlatMix));
   if (alpha < 0.012) {
     // Both vertices compute the same alpha, so the whole segment is clipped: no fragments.
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -87,32 +120,7 @@ varying float vBundle;
 varying float vEnd; // 0 at the importer, 1 at the imported end
 varying float vNeuron;
 
-const float FADE = ${FIRING_FADE_S.toFixed(2)};
-
-float hash(float n) {
-  return fract(sin(n * 12.9898 + 78.233) * 43758.5453);
-}
-
-// While Claude thinks, lines fire like axons. Every visible line holds a flickering violet charge for the whole
-// burst. Lines leaving the same file (or directory) share a rhythm, so they fire together: a spike runs to the
-// imported end and flashes where it lands, then the line rests. Every line fires within 2 s of a burst starting;
-// after that a beat is skipped now and then, so the network sparks instead of marching.
-float firing() {
-  if (uTime < uThinkStart || uTime > uThinkEnd + FADE) return 0.0;
-  float envelope = smoothstep(uThinkStart, uThinkStart + 0.3, uTime) * (1.0 - smoothstep(uThinkEnd, uThinkEnd + FADE, uTime));
-  float neuron = floor(vNeuron + 0.5);
-  float charge = 0.2 + 0.08 * sin(uTime * 9.0 + neuron);
-  float period = mix(0.8, 2.0, hash(neuron));
-  float local = uTime - uThinkStart - hash(neuron + 0.5) * period;
-  if (local < 0.0) return charge * envelope;
-  float beat = floor(local / period);
-  if (beat > 0.0 && hash(neuron * 1.618 + beat * 7.0) < 0.15) return charge * envelope;
-  float head = (local - beat * period) / 0.7; // line lengths the spike has travelled this beat
-  float behind = head - vEnd;
-  float spike = exp(-behind * behind * 160.0) + (behind > 0.0 ? 0.6 * exp(-behind * 4.0) : 0.0);
-  float landing = exp(-(head - 1.0) * (head - 1.0) * 24.0) * smoothstep(0.6, 1.0, vEnd);
-  return (charge + spike + landing) * envelope;
-}
+${FIRING_GLSL}
 
 void main() {
   // Dashes travel from importer to imported; the per-edge offset breaks up lockstep marching.
@@ -123,7 +131,7 @@ void main() {
   color = mix(color, uEditColor, clamp(vEdit * 1.4, 0.0, 1.0));
   float strength = vAlpha * (0.5 + 0.5 * pulse) + max(vRead, vEdit) * pulse * 0.5;
   // Faint lines fire too, a little dimmer than the ones in focus; the strongest spikes run white-hot.
-  float fire = firing() * (0.45 + 0.55 * clamp(vAlpha / 0.3, 0.0, 1.0));
+  float fire = firing(vNeuron, vEnd) * (0.45 + 0.55 * clamp(vAlpha / 0.3, 0.0, 1.0));
   vec3 spark = mix(uThinkColor, vec3(1.0), clamp(fire - 0.7, 0.0, 0.6));
   gl_FragColor = vec4(color * strength + spark * fire, 1.0);
 }
