@@ -1,7 +1,7 @@
 // Every message that crosses a process or thread boundary in Orbit.
 // Shared by the extension host, the indexer worker thread and the webview.
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 
 export interface GraphNode {
   /** Workspace-relative POSIX path. Stable key; session events resolve to it. */
@@ -168,12 +168,16 @@ export interface ActivityDelta {
  * `thinking`: Claude is thinking (at most one per delta), and every import line on screen fires.
  * `mcp`: a tool of an MCP server was called (`call`) or answered (`done`, `error`); `server` is the name as it appears
  * in the tool name (`mcp__<server>__<tool>`). Not tied to a node, so it passes whatever graph is loaded.
+ * `agent`: a subagent of the conversation did it, named by the id of the tool call running it. `agentStart` brings the
+ * subagent's own star out of the conversation's (`name`: its type), and `agentEnd` sends it back; neither has a node.
  */
 export type ActivityEvent =
-  | { kind: 'read' | 'edit'; node: number }
+  | { kind: 'read' | 'edit'; node: number; agent?: string }
   | { kind: 'thinking' }
   | { kind: 'turnEnd' }
-  | { kind: 'mcp'; server: string; tool: string; phase: 'call' | 'done' | 'error' };
+  | { kind: 'mcp'; server: string; tool: string; phase: 'call' | 'done' | 'error'; agent?: string }
+  | { kind: 'agentStart'; agent: string; name: string }
+  | { kind: 'agentEnd'; agent: string };
 
 /** Claude Code permission modes Orbit offers. `default` passes no flag, so the user's own settings apply. */
 export const PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const;
@@ -359,18 +363,24 @@ export interface ConversationSummary {
   skills: string[];
 }
 
-/** Append-only conversation log. The host keeps a bounded copy and resends it when the webview reloads. */
+/**
+ * Append-only conversation log. The host keeps a bounded copy and resends it when the webview reloads. `agent`, on text,
+ * tool and notice entries: a subagent wrote it, and a click on that subagent's star shows it; the session view shows the
+ * conversation's own.
+ */
 export type TranscriptEntry =
   /** `skills` were attached to the prompt and are invoked with it; `files` went with it as context. */
   | { id: number; kind: 'prompt'; text: string; skills?: string[]; files?: string[] }
-  | { id: number; kind: 'text'; text: string }
+  | { id: number; kind: 'text'; text: string; agent?: string }
   /**
    * `file` is the workspace-relative id of the file the tool touched, which the transcript links to: a graph
    * file, or a source file Claude is writing that joins the graph with the next update. `mcp` is set for a tool of an MCP server.
    */
-  | { id: number; kind: 'tool'; tool: string; detail: string; action?: 'read' | 'edit'; file?: string; mcp?: { server: string; tool: string } }
+  | { id: number; kind: 'tool'; tool: string; detail: string; action?: 'read' | 'edit'; file?: string; mcp?: { server: string; tool: string }; agent?: string }
   | { id: number; kind: 'turn'; outcome: 'done' | 'interrupted' | 'failed'; durationMs: number; costUsd: number; message?: string }
-  | { id: number; kind: 'notice'; level: 'info' | 'warn' | 'error'; text: string };
+  | { id: number; kind: 'notice'; level: 'info' | 'warn' | 'error'; text: string; agent?: string }
+  /** A subagent started (no `outcome`), or its call returned: `name` is its type, `detail` what it was asked to do. */
+  | { id: number; kind: 'agent'; agent: string; name: string; detail: string; outcome?: 'done' | 'interrupted' | 'failed' };
 
 export type WebviewToHost =
   | { type: 'ready'; protocol: number }
