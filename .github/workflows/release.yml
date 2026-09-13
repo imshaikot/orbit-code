@@ -1,8 +1,8 @@
 name: Release
 
 # `yarn nx release` versions what the version plans name, writes each project's CHANGELOG.md, commits, and tags each
-# release with its group's pattern (nx.json): v<version> for the VS Code extension, <project>-v<version> for an npm
-# package. Pushing a tag runs the matching job.
+# release with its group's pattern (nx.json): v<version> for the VS Code extension, desktop-v<version> for the desktop
+# app, <project>-v<version> for an npm package. Pushing a tag runs the matching job.
 on:
   push:
     tags: ['v*', '*-v*']
@@ -12,6 +12,8 @@ permissions:
 
 env:
   NODE_VERSION: 22
+  # apps/desktop depends on electron, whose install downloads Electron; only the desktop job needs it.
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
 jobs:
   vscode:
@@ -50,9 +52,48 @@ jobs:
         if: env.VSCE_PAT != '' || env.OVSX_PAT != ''
         run: node apps/vscode/scripts/publish.mjs
 
+  desktop:
+    name: Build the desktop app on ${{ matrix.os }}, attach it to a GitHub release
+    if: startsWith(github.ref_name, 'desktop-v')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      # The one job that needs Electron itself.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: ''
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - run: yarn install --immutable
+      - name: Check the tag matches apps/desktop/package.json
+        shell: bash
+        run: |
+          version=$(node -p 'require("./apps/desktop/package.json").version')
+          if [ "$GITHUB_REF_NAME" != "desktop-v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $version"
+            exit 1
+          fi
+      - run: yarn typecheck
+      # Unsigned: macOS and Windows warn before the first launch until signing is set up (apps/desktop/README.md).
+      - run: yarn desktop:package
+      - name: Attach the installers to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node apps/desktop/scripts/publish.mjs
+
   npm:
     name: Publish an npm package
-    if: contains(github.ref_name, '-v')
+    if: contains(github.ref_name, '-v') && !startsWith(github.ref_name, 'desktop-v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

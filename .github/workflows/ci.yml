@@ -15,6 +15,8 @@ permissions:
 
 env:
   NODE_VERSION: 22
+  # apps/desktop depends on electron, whose install downloads Electron; only the desktop job needs it.
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
 jobs:
   check:
@@ -139,4 +141,50 @@ jobs:
         with:
           name: harness-report
           path: .harness/out
+          if-no-files-found: ignore
+
+  desktop:
+    name: Desktop app (Electron)
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # The one job that needs Electron itself.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: ''
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - name: Cache Electron and electron-builder downloads
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json', 'apps/desktop/scripts/builder.mjs') }}
+      - run: yarn install --immutable
+      - uses: actions/cache/restore@v6
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: nx-${{ runner.os }}-
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Electron's sandbox needs.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # Without a claude CLI on the runner the probe logs `agent unavailable`, which the smoke accepts.
+      - run: xvfb-run -a yarn desktop:smoke
+      - run: yarn desktop:package --linux AppImage
+      - uses: actions/upload-artifact@v7
+        with:
+          name: orbit-code-desktop-linux
+          path: dist/apps/desktop/*.AppImage
+          if-no-files-found: error
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-smoke-logs
+          path: .harness/desktop-smoke
           if-no-files-found: ignore

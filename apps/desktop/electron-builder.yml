@@ -1,0 +1,37 @@
+# electron-builder's configuration, run by scripts/package.mjs (`yarn desktop:package`) on a production build.
+# Everything the app runs is bundled into dist/, so package.json lists no dependencies and nothing from node_modules ships.
+appId: code.orbit.desktop
+productName: Orbit Code
+artifactName: orbit-code-${version}-${os}-${arch}.${ext}
+directories:
+  output: ../../dist/apps/desktop
+  buildResources: media
+files:
+  - package.json
+  - dist/main.js
+  - dist/preload.js
+  - dist/indexer.mjs
+  - dist/webview.js
+  - media/icon.png
+  - media/trayTemplate.png
+  - media/trayTemplate@2x.png
+# A worker thread can't start from inside the asar (main.ts points at app.asar.unpacked).
+asarUnpack:
+  - dist/indexer.mjs
+npmRebuild: false
+publish: null
+mac:
+  category: public.app-category.developer-tools
+  target: [dmg, zip]
+  icon: media/icon.png
+  # Ad hoc: runs on Apple silicon, but Gatekeeper warns until a Developer ID signs and notarizes it (README.md).
+  identity: '-'
+win:
+  target: [nsis]
+  icon: media/icon.png
+linux:
+  # No spaces in a Linux binary's name; macOS keeps "Orbit Code.app" and Windows "Orbit Code.exe".
+  executableName: orbit-code
+  target: [AppImage]
+  category: Development
+  icon: media/icon.png
