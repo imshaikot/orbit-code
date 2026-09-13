@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { FileRequests } from './fileRequests';
 import { type FrameSample, FrameLoop, type Pace } from './frameLoop';
 import { HostBridge } from './host';
+import { AgentLogs, isAgentEntry } from './hud/agentLogs';
 import { el } from './hud/dom';
 import { EditorSheet } from './hud/editorSheet';
 import { FileMenu } from './hud/fileMenu';
@@ -106,15 +107,19 @@ const session = new SessionPanel(
   },
   () => loop.wake(),
 );
+/** What each subagent was asked and has done, which a click on its star shows. */
+const agentLogs = new AgentLogs();
 const sparkPopup = new SparkPopup(hud, {
   toggleFollow: () => {
     const world = scene.world;
-    if (!world || sparkAnchorId === undefined) return;
+    if (!world || sparkAnchorId === undefined) return false;
     if (world.following === sparkAnchorId) disengageFollow(world);
     else engageFollow(world, sparkAnchorId);
+    return world.following === sparkAnchorId;
   },
   closed: () => {
     sparkAnchorId = undefined;
+    sparkAgent = undefined;
   },
 });
 const perf = new PerfReadout(hud);
@@ -136,6 +141,8 @@ const FOLLOW_TWEEN_MS = 600;
 const FOLLOW_PAN_RATE = 3;
 /** The star the popup is open for (or was last open for, while closing), so its toggle knows what to act on. */
 let sparkAnchorId: number | undefined;
+/** The subagent whose output the popup shows, when its star is a subagent's. */
+let sparkAgent: { key: string; agent: string } | undefined;
 const sparkAnchor = new THREE.Vector3();
 /** The one-shot move to a fair distance from the star when Follow is switched on; continuous tracking takes over once it ends. */
 let followTween: { start: number; fromPosition: THREE.Vector3; toPosition: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3 } | undefined;
@@ -221,6 +228,7 @@ host.on('activity', ({ delta }) => {
 });
 host.on('sessions', ({ sessions }) => {
   session.setSessions(sessions);
+  agentLogs.retain(new Set(sessions.states.map((state) => state.key)));
   scene.setWorking(session.anyWorking);
   loop.wake();
 });
@@ -229,7 +237,15 @@ host.on('session', ({ state }) => {
   scene.setWorking(session.anyWorking);
   loop.wake();
 });
-host.on('transcript', ({ key, reset, entries }) => session.appendTranscript(key, reset, entries));
+host.on('transcript', ({ key, reset, entries }) => {
+  // A subagent's entries are its output, which a click on its star shows; the session view keeps to the conversation's own.
+  if (agentLogs.append(key, reset, entries) && sparkAgent?.key === key) {
+    const log = agentLogs.get(key, sparkAgent.agent);
+    if (log) sparkPopup.showLog(log);
+  }
+  const own = entries.filter((entry) => !isAgentEntry(entry));
+  if (reset || own.length > 0) session.appendTranscript(key, reset, own);
+});
 host.on('catalog', ({ catalog }) => session.setCatalog(catalog));
 host.on('history', ({ history }) => session.setHistory(history));
 host.on('attachFiles', ({ files: picked }) => session.attachFiles(picked));
@@ -358,14 +374,16 @@ function placeFileMenu(world: World): void {
   fileMenu.place(x, y, menuAnchor.z > -1 && menuAnchor.z < 1 && x >= 0 && y >= 0 && x <= stage.width && y <= stage.height);
 }
 
-/** A click on Claude's star: the popup opens beside it, offering to follow it or (already following) to stop. */
+/** A click on one of Claude's stars: the popup opens beside it, offering to follow it or (already following) to stop, and for a subagent's star showing its output. */
 function openSparkPopup(index: number): void {
   const world = scene.world;
   if (!world) return;
   const id = world.claudeIdAt(index);
   if (id === undefined) return;
+  const agent = world.claudeAgent(id);
   sparkAnchorId = id;
-  sparkPopup.open(world.following === id);
+  sparkAgent = agent && { key: agent.key, agent: agent.agent };
+  sparkPopup.open(world.following === id, agent && (agentLogs.get(agent.key, agent.agent) ?? { name: agent.name ?? 'Subagent', detail: '', lines: [] }));
   placeSparkPopup(world);
   loop.wake();
 }
@@ -374,7 +392,9 @@ function placeSparkPopup(world: World): void {
   if (sparkAnchorId === undefined) return;
   const point = world.claudePosition(sparkAnchorId);
   if (!point) {
-    sparkPopup.close();
+    // A subagent's star goes once the subagent is done; its output stays up until closed.
+    if (sparkAgent) sparkPopup.starGone();
+    else sparkPopup.close();
     return;
   }
   sparkAnchor.copy(point).project(stage.camera);

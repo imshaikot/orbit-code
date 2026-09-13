@@ -16,6 +16,7 @@
   --error: #ff8f9a;
   --warn: #ffd28a;
   --mcp: #e2ff5a;
+  --agent: #e38bff;
   --ui: var(--vscode-font-family, system-ui, -apple-system, 'Segoe UI', sans-serif);
   --code: var(--vscode-editor-font-family, ui-monospace, 'SF Mono', Menlo, Consolas, monospace);
   --legible: 0 1px 2px rgba(3, 6, 16, 0.95), 0 0 14px rgba(3, 6, 16, 0.7);
@@ -2720,6 +2721,139 @@ h5.md-heading {
 .spark-popup-toggle {
   white-space: nowrap;
   box-shadow: 0 12px 30px rgba(3, 6, 16, 0.5);
+}
+
+/* A subagent's star: what it was asked, and what it has done and written as it comes, the way a terminal shows it. */
+.spark-popup[data-kind='agent'] {
+  width: min(360px, calc(100vw - 16px));
+  padding: 10px;
+  text-shadow: none;
+  background: var(--glass);
+  border: 1px solid var(--glass-rim);
+  border-radius: 14px;
+  box-shadow:
+    0 18px 44px rgba(3, 6, 16, 0.62),
+    inset 0 1px 0 rgba(214, 205, 255, 0.12);
+  backdrop-filter: blur(14px);
+}
+
+.spark-popup[data-kind='claude'] .spark-popup-head,
+.spark-popup[data-kind='claude'] .spark-popup-detail,
+.spark-popup[data-kind='claude'] .spark-popup-log {
+  display: none;
+}
+
+.spark-popup-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.spark-popup-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--agent);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.spark-popup-status {
+  flex: none;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.spark-popup[data-status='running'] .spark-popup-status {
+  color: var(--agent);
+}
+
+.spark-popup[data-status='failed'] .spark-popup-status {
+  color: var(--error);
+}
+
+.spark-popup-detail {
+  margin: 3px 2px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.spark-popup-log {
+  max-height: 220px;
+  margin: 8px 0;
+  padding: 7px 9px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-family: var(--code);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: var(--field);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.spl-line[data-kind='tool'] {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.spl-tool {
+  flex: none;
+  color: var(--ink-faint);
+}
+
+.spl-line[data-action='read'] .spl-tool {
+  color: var(--read);
+}
+
+.spl-line[data-action='edit'] .spl-tool {
+  color: var(--edit);
+}
+
+.spl-line[data-action='mcp'] .spl-tool {
+  color: var(--mcp);
+}
+
+.spl-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spl-line[data-kind='text'],
+.spl-line[data-kind='notice'] {
+  margin: 3px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.spl-line[data-kind='text'] {
+  color: var(--ink);
+}
+
+.spl-line[data-kind='notice'] {
+  color: var(--warn);
+}
+
+.spl-line[data-level='error'] {
+  color: var(--error);
+}
+
+.spl-empty {
+  margin: 0;
+  color: var(--ink-faint);
+}
+
+.spark-popup[data-kind='agent'] .spark-popup-toggle {
+  width: 100%;
+  box-shadow: none;
 }
 
 /* ── File menu: the card beside a clicked file ──────────────── */
