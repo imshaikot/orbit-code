@@ -1,0 +1,65 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "desktop",
+  "projectType": "application",
+  "sourceRoot": "apps/desktop/src",
+  "tags": ["type:app", "runtime:electron", "publish:desktop"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node build.mjs",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {
+        "production": {
+          "command": "node build.mjs --production"
+        }
+      },
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "watch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node build.mjs --watch",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["^watch"],
+      "continuous": true
+    },
+    "typecheck": {},
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node apps/desktop/scripts/start.mjs"
+      },
+      "dependsOn": ["build"],
+      "cache": false
+    },
+    "package": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "nx run desktop:build:production && node apps/desktop/scripts/package.mjs"
+      },
+      "outputs": ["{workspaceRoot}/dist/apps/desktop"],
+      "cache": false
+    },
+    "smoke": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node test/smoke.mjs",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["build"],
+      "cache": false
+    },
+    "nx-release-publish": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/publish.mjs",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["package"]
+    }
+  }
+}

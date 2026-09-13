@@ -18,7 +18,10 @@
     "package": "nx run vscode:package",
     "index": "node packages/indexer/dist/indexer.mjs",
     "harness": "nx run harness:e2e --",
-    "smoke": "nx run vscode:smoke"
+    "smoke": "nx run vscode:smoke",
+    "desktop": "nx run desktop:start --",
+    "desktop:package": "nx run desktop:package --",
+    "desktop:smoke": "nx run desktop:smoke"
   },
   "devDependencies": {
     "@nx/js": "23.2.1",
