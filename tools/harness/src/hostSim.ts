@@ -312,11 +312,17 @@ function stopTurn(conversation: Conversation): void {
   conversation.timers = [];
 }
 
+/** Subagents `subagent()` started and not ended yet, by id: the conversation each works for, what it is, and whether it opened its own turn. */
+const subagents = new Map<string, { conversation: Conversation; name: string; detail: string; ownTurn: boolean; reads: number }>();
+let subagentsMade = 0;
+
 function endTurn(conversation: Conversation, outcome: 'done' | 'interrupted'): void {
   const steps = conversation.timers.length;
   stopTurn(conversation);
   const { state } = conversation;
   if (state.phase === 'idle') return;
+  // Subagents still out end with the turn, ahead of its end, as the host ends them.
+  for (const [agent, open] of [...subagents]) if (open.conversation === conversation) closeSubagent(agent, outcome);
   batch.push({ key: conversation.key, event: { kind: 'turnEnd' } });
   entry(conversation, { kind: 'turn', outcome, durationMs: STEP_MS * steps, costUsd: 0 });
   state.phase = 'idle';
@@ -328,6 +334,55 @@ function endTurn(conversation: Conversation, outcome: 'done' | 'interrupted'): v
 /** Every running turn ends now. */
 function pause(): void {
   for (const conversation of chats.filter(busy)) endTurn(conversation, 'interrupted');
+}
+
+/**
+ * A subagent of the running conversation, reported the way the host reports one: its star comes out of Claude's, and its
+ * log gets a Grep and a line of text. It stays out until `subagentEnd()` or its turn's end. With no turn running, it
+ * opens one in the current conversation for itself, which its end closes. Returns its id, the tool call running it.
+ */
+function subagent(name = 'Explore', detail = 'Find where the graph message reaches the webview'): string {
+  const conversation = running();
+  const ownTurn = !busy(conversation);
+  if (ownTurn) {
+    conversation.state.phase = 'working';
+    sendState(conversation);
+    entry(conversation, { kind: 'prompt', text: 'A harness subagent' });
+  }
+  const agent = `toolu_harness_${++subagentsMade}`;
+  subagents.set(agent, { conversation, name, detail, ownTurn, reads: 0 });
+  entry(conversation, { kind: 'tool', tool: 'Task', detail });
+  batch.push({ key: conversation.key, event: { kind: 'agentStart', agent, name } });
+  entry(conversation, { kind: 'agent', agent, name, detail });
+  entry(conversation, { kind: 'tool', tool: 'Grep', detail: 'postMessage', agent });
+  entry(conversation, { kind: 'text', text: 'Subagent report: HostBridge posts the graph once, as a reset.', agent });
+  return agent;
+}
+
+/** The subagent `agent` reads a file of the graph: its star leaves Claude's side for the file. */
+function subagentRead(agent: string): void {
+  const open = subagents.get(agent);
+  if (!open) return;
+  const node = Math.floor((((++open.reads + subagentsMade) * 5 * GOLDEN) % 1) * graph.nodes.length);
+  const id = graph.nodes[node].id;
+  batch.push({ key: open.conversation.key, event: { kind: 'read', node, agent } });
+  entry(open.conversation, { kind: 'tool', tool: 'Read', detail: id, action: 'read', file: id, agent });
+}
+
+/** The subagent `agent`'s call returns: its star goes back into Claude's, and the turn it opened, if it did, ends. */
+function subagentEnd(agent: string, outcome: 'done' | 'interrupted' | 'failed' = 'done'): void {
+  const open = subagents.get(agent);
+  if (!open) return;
+  closeSubagent(agent, outcome);
+  if (open.ownTurn) endTurn(open.conversation, outcome === 'interrupted' ? 'interrupted' : 'done');
+}
+
+function closeSubagent(agent: string, outcome: 'done' | 'interrupted' | 'failed'): void {
+  const open = subagents.get(agent);
+  if (!open) return;
+  subagents.delete(agent);
+  batch.push({ key: open.conversation.key, event: { kind: 'agentEnd', agent } });
+  entry(open.conversation, { kind: 'agent', agent, name: open.name, detail: open.detail, outcome });
 }
 
 /* ── Files: what the file menu and the editor sheet ask of the host ── */
@@ -675,6 +730,12 @@ Object.assign(window, {
     play: (prompt = 'Harness turn', key?: string) => playTurn(prompt, [], [], key),
     /** Claude thinks, in or out of a turn: every import line on screen fires. */
     think,
+    /** A subagent of the running conversation (opening a turn if none runs); returns its id. See `subagent`. */
+    subagent,
+    /** The subagent reads a file of the graph: its star moves over it. */
+    subagentRead,
+    /** The subagent's call returns: its star goes back into Claude's, and a turn it opened ends. */
+    subagentEnd,
     /** Claude asks to use a tool; the session view's card answers it. */
     ask,
     /** Claude asks questions (AskUserQuestion); the session view's question card answers them into `answered`. */

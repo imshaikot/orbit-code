@@ -303,6 +303,58 @@ try {
   }
   report.checks.spark = spark;
 
+  // A subagent: its smaller star comes out of Claude's and waits beside it. Followed, so that it is on screen whatever
+  // the framing, a click on it opens what the subagent was asked and has done, which the session view leaves out; a
+  // read takes the star over the file; once done, it goes back into Claude's star and leaves, its output still up until Esc.
+  const agentStar = () => evaluate(`(() => {
+    const w = __orbit.world();
+    const id = w.claudeAgentStars[0];
+    const p = id === undefined ? undefined : w.claudePosition(id);
+    return p ? { world: [p.x, p.y, p.z], ...__orbit.project(p.x, p.y, p.z) } : null;
+  })()`);
+  const subagent = { starsBefore: await evaluate('__orbit.world().claudeStars') };
+  const agentId = await evaluate('__host.subagent()');
+  subagent.starCameOut = await waitFor(evaluate, '__orbit.world().claudeAgentStars.length === 1', 3_000);
+  await sleep(600); // it fades in beside Claude's star
+  await evaluate('(() => { const w = __orbit.world(); w.follow(w.claudeAgentStars[0]); })()');
+  await sleep(1_500); // the camera pans until the star sits in the middle
+  const agentAt = await agentStar();
+  subagent.onScreen = !!agentAt && agentAt.depth > -1 && agentAt.depth < 1 && agentAt.x >= 0 && agentAt.y >= 0 && agentAt.x <= width && agentAt.y <= height;
+  if (subagent.onScreen) {
+    await click(agentAt.x, agentAt.y);
+    await sleep(300);
+    Object.assign(
+      subagent,
+      await evaluate(`(() => {
+        const popup = document.querySelector('.spark-popup');
+        return {
+          popupOpened: !popup.hidden && popup.dataset.kind === 'agent',
+          title: document.querySelector('.spark-popup-title')?.textContent,
+          status: popup.dataset.status,
+          lines: document.querySelectorAll('.spark-popup-log .spl-line').length,
+          leftOutOfSessionView: ![...document.querySelectorAll('.transcript .t-entry')].some((entry) => entry.textContent.includes('Subagent report:')),
+        };
+      })()`),
+    );
+    await screenshot('1e-subagent.png');
+    await evaluate(`__host.subagentRead(${JSON.stringify(agentId)})`);
+    await sleep(1_000);
+    const moved = await agentStar();
+    subagent.movedToFile = !!moved && Math.hypot(moved.world[0] - agentAt.world[0], moved.world[1] - agentAt.world[1], moved.world[2] - agentAt.world[2]) > 1;
+    subagent.readLogged = (await evaluate(`document.querySelectorAll('.spark-popup-log .spl-line').length`)) === subagent.lines + 1;
+  }
+  await evaluate(`__host.subagentEnd(${JSON.stringify(agentId)})`);
+  subagent.shownDone = await waitFor(evaluate, `document.querySelector('.spark-popup').dataset.status === 'done'`, 3_000);
+  subagent.starLeft = await waitFor(evaluate, `__orbit.world().claudeAgentStars.length === 0 && __orbit.world().claudeStars === ${subagent.starsBefore}`, 8_000);
+  subagent.followDropped = (await evaluate('__orbit.world().following ?? null')) === null;
+  if (subagent.popupOpened) {
+    subagent.outputKept = await evaluate(`!document.querySelector('.spark-popup').hidden`);
+    await key('Escape', 'Escape', 27);
+    subagent.closedByEscape = await evaluate(`document.querySelector('.spark-popup').hidden`);
+  }
+  await waitFor(evaluate, `!document.querySelector('.claude-bubble')`, 6_000);
+  report.checks.subagent = subagent;
+
   // A thought while idle: every import line on screen fires, then the loop parks again. Seen from inside the directory
   // with the most imports between its own files (the root may show no lines at all), with the HUD hidden and the loop
   // parked before and after, so the firing lines are what lights up.
