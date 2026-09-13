@@ -60,6 +60,14 @@
           "pattern": "v{version}"
         }
       },
+      "desktop": {
+        "projects": [
+          "tag:publish:desktop"
+        ],
+        "releaseTag": {
+          "pattern": "desktop-v{version}"
+        }
+      },
       "npm": {
         "projects": [
           "tag:publish:npm"

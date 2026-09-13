@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Checks the rules that keep Orbit's packages usable from every editor, using each project's project.json tags, its
 // package.json dependencies and the imports in its src/:
-//   tags      every project has one type: tag (lib, app, tool) and one runtime: tag (neutral, browser, node, vscode)
+//   tags      every project has one type: tag (lib, app, tool) and one runtime: tag (neutral, browser, node, vscode, electron)
 //   type      a lib depends only on libs; an app or a tool depends only on libs
 //   runtime   code imports only projects that run where it runs, and nothing its runtime lacks:
 //               neutral  neutral projects; no Node builtins, no 'vscode'
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TYPES = ['lib', 'app', 'tool'];
-const RUNTIMES = { neutral: ['neutral'], browser: ['neutral', 'browser'], node: ['neutral', 'node'], vscode: ['neutral', 'node', 'vscode'] };
+const RUNTIMES = { neutral: ['neutral'], browser: ['neutral', 'browser'], node: ['neutral', 'node'], vscode: ['neutral', 'node', 'vscode'], electron: ['neutral', 'node', 'electron'] };
 const INDEXER_API = new Set(['@orbit-code/indexer/listFiles']);
 const builtins = new Set(builtinModules);
 
