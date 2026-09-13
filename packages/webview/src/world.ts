@@ -7,12 +7,16 @@ import { Bubbles } from './bubbles';
 import { ClaudeLayer } from './claude';
 import { DirView } from './dirView';
 import { EdgeLayer, FIRING_FADE_S } from './edges';
+import { ARC_GAP, CORE_RADIUS, type FlatLayout, MORPH_STAGGER, flatLayout, halfBand, ringPoint } from './flatLayout';
 import { Focus, type Sphere } from './focus';
 import type { Crumb } from './hud/identity';
+import type { ViewMode } from './hud/viewTabs';
 import type { LabelSpec } from './labels';
 import { McpLayer } from './mcp';
+import { NeuronLayer } from './neurons';
 import { type Adjacency, NodeState, REMOVE_S, buildAdjacency } from './nodeState';
 import { NodeLayer } from './nodes';
+import { OrbitLayer } from './orbits';
 import { KIND_COLORS } from './palette';
 import { ParticleLayer } from './particles';
 import type { Picked } from './picking';
@@ -30,6 +34,11 @@ const FIRING_HOLD_S = 2.5;
 const ACTIVE_LABELS = 6;
 /** Candidates only; the label layer drops whatever would overlap. */
 const MAX_FILE_LABELS = 120;
+/** How long the files take to fly between the Nested and Flat views. */
+const MORPH_MS = 1400;
+/** The Flat view names the files largest on screen, at most this many candidates, once a sphere is this many CSS pixels in radius. */
+const MAX_FLAT_LABELS = 320;
+const FLAT_LABEL_PX = 9;
 
 interface Touch {
   node: number;
@@ -63,7 +72,6 @@ function subagentKey(key: string, agent: string): string {
 export class World {
   readonly uniforms: SharedUniforms;
   readonly focus: Focus;
-  readonly bounds: Sphere;
   readonly adjacency: Adjacency;
   readonly view: DirView;
   /** FILE_KINDS index per file. */
@@ -103,6 +111,17 @@ export class World {
   private contentLabels: LabelSpec[] = [];
   private contentLabelsFor = -1;
   private labelsDirty = true;
+  /** The root directory's bubble: what the Nested view frames at its widest. */
+  private readonly nestedBounds: Sphere;
+  private readonly fileColors: Float32Array;
+  /** Nested or Flat; while the files fly between the two, the one they are flying to. */
+  private viewMode: ViewMode = 'nested';
+  /** The flight in progress: uFlatMix from `from` to `to`, started at `start` (performance.now). */
+  private morph: { from: number; to: number; start: number; duration: number } | undefined;
+  /** The Flat view's layout and layers, made the first time it is shown and carried across live updates while it is. */
+  private flat: FlatLayout | undefined;
+  private neurons: NeuronLayer | undefined;
+  private orbits: OrbitLayer | undefined;
 
   /** With `previous`, continues that World after a live update instead of starting over; `remap` maps its node indices to these. */
   constructor(
@@ -130,12 +149,12 @@ export class World {
       for (let k = 0; k < kindCount; k++) this.kindCounts[parent * kindCount + k] += this.kindCounts[c * kindCount + k];
     }
     this.dominantKinds = Uint8Array.from(labels, (_, c) => dominantKind(this.kindCounts.subarray(c * kindCount, (c + 1) * kindCount)));
-    const fileColors = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) fileColors.set(KIND_COLORS[FILE_KINDS[this.kinds[i]]], i * 3);
+    this.fileColors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) this.fileColors.set(KIND_COLORS[FILE_KINDS[this.kinds[i]]], i * 3);
     const bubbleColors = new Float32Array(labels.length * 3);
     this.dominantKinds.forEach((k, c) => bubbleColors.set(KIND_COLORS[FILE_KINDS[k]], c * 3));
 
-    this.nodes = new NodeLayer(layout.positions, graph.nodes.sizes, fileColors, layout.clusterOf, this.view.viewParent, this.uniforms);
+    this.nodes = new NodeLayer(layout.positions, graph.nodes.sizes, this.fileColors, layout.clusterOf, this.view.viewParent, this.uniforms);
     this.bubbles = new Bubbles(centers, radii, bubbleColors, this.view, this.uniforms);
     this.edges = new EdgeLayer(graph.edges, layout.positions, layout.clusterOf, centers, radii, this.view, this.uniforms);
     this.particles = new ParticleLayer(this.uniforms);
@@ -144,20 +163,14 @@ export class World {
     for (let i = 0; i < count; i++) this.members[layout.clusterOf[i]].push(i);
 
     this.spheres = labels.map((_, c) => ({ center: this.clusterCenter(c), radius: radii[c] }));
-    this.bounds = labels.length > 0 ? this.spheres[this.view.root] : { center: new THREE.Vector3(), radius: 10 };
-    const { center } = this.bounds;
-    const radius = Math.max(10, this.bounds.radius);
+    this.nestedBounds = labels.length > 0 ? this.spheres[this.view.root] : { center: new THREE.Vector3(), radius: 10 };
 
-    // Home: above the root directory's contents, toward the default camera.
-    this.claude = new ClaudeLayer(center.clone().add(new THREE.Vector3(0, radius * 0.35, radius * 0.45)), Math.max(2.5, radius * 0.07), this.uniforms);
+    this.claude = new ClaudeLayer(this.home(), Math.max(2.5, Math.max(10, this.nestedBounds.radius) * 0.07), this.uniforms);
     this.mcp = new McpLayer(this.uniforms);
 
     stage.scene.add(this.nodes.mesh, this.bubbles.mesh, this.edges.lines, this.particles.points, this.claude.group, this.mcp.group);
 
-    stage.camera.near = Math.max(0.05, radius / 4000);
-    stage.camera.far = radius * 40;
-    stage.camera.updateProjectionMatrix();
-    stage.controls.maxDistance = radius * 8;
+    this.fitCamera();
     stage.controls.minDistance = 1.5;
 
     this.focus = new Focus(stage.camera, stage.controls, this.uniforms, (c) => this.spheres[c], this.view, this.view.root);
@@ -167,6 +180,46 @@ export class World {
 
   get clusterCount(): number {
     return this.layout.clusters.labels.length;
+  }
+
+  /** A sphere around everything the view shows: the root directory's bubble, or the Flat view's orbits. */
+  get bounds(): Sphere {
+    return this.viewMode === 'flat' && this.flat ? { center: new THREE.Vector3(), radius: this.flat.radius } : this.nestedBounds;
+  }
+
+  /** Nested or Flat: the view shown, or the one the files are flying to. */
+  get mode(): ViewMode {
+    return this.viewMode;
+  }
+
+  /** Whether the files are flying between the two views. */
+  get morphing(): boolean {
+    return this.morph !== undefined;
+  }
+
+  /**
+   * Switches between the Nested and Flat views. Animated, the files fly to their places in a wave while the camera
+   * frames the view; otherwise they are there at once. Back in the Nested view, the camera frames the directory it was in.
+   */
+  setMode(mode: ViewMode, animate: boolean): void {
+    if (mode === this.viewMode) return;
+    this.viewMode = mode;
+    if (mode === 'flat' && !this.flat) {
+      this.flat = flatLayout(this.graph);
+      this.buildFlat();
+    }
+    const { uFlatMix, uTime } = this.uniforms;
+    const to = mode === 'flat' ? 1 : 0;
+    this.morph = animate ? { from: uFlatMix.value, to, start: performance.now(), duration: MORPH_MS } : undefined;
+    if (!animate) uFlatMix.value = to;
+    if (mode === 'flat') this.focus.freeze(this.bounds, animate, MORPH_MS * 0.8);
+    else this.focus.thaw(this.focus.opened, animate, MORPH_MS * 0.8);
+    this.claude.rehome(this.home());
+    this.fitCamera();
+    this.hover({ kind: 'none' });
+    this.contentLabelsFor = -1;
+    this.labelsDirty = true;
+    this.animateUntil = Math.max(this.animateUntil, uTime.value + 0.2);
   }
 
   /** MCP servers orbiting Claude right now. */
@@ -215,9 +268,10 @@ export class World {
     return label === '.' ? `${this.graph.root} (root)` : label;
   }
 
-  /** The directories from the root down to the one being looked into. */
+  /** The directories from the root down to the one being looked into; the Flat view looks at the whole workspace. */
   location(): Crumb[] {
-    return this.view.path(this.focus.cluster).map((cluster) => {
+    const path = this.viewMode === 'flat' ? [this.view.root] : this.view.path(this.focus.cluster);
+    return path.map((cluster) => {
       const label = this.layout.clusters.labels[cluster];
       const name = cluster !== this.view.root ? this.view.name(cluster) : label === '.' ? this.graph.root : `${this.graph.root}/${label}`;
       return { cluster, name, path: this.clusterName(cluster) };
@@ -289,6 +343,7 @@ export class World {
   /** Advances animation by dt seconds. Returns whether another frame is needed. */
   update(dt: number, now: number): boolean {
     const t = (this.uniforms.uTime.value += dt);
+    const morphing = this.advanceMorph(now);
     while (this.pending.length > 0 && this.pending[0].applyAt <= t) {
       const { event, key } = this.pending.shift()!;
       this.apply(event, t, true, key);
@@ -302,10 +357,11 @@ export class World {
 
     const claudeMoving = this.claude.update(dt);
     const focusMoving = this.focus.update(now);
-    // MCP stations keep to their conversation's star, at the scale of the directory in view.
-    const stationsOut = this.mcp.update(t, (key) => this.claude.position(key), Math.max(3, (this.layout.clusters.radii[this.focus.cluster] ?? 10) * 0.2));
+    // MCP stations keep to their conversation's star, at the scale of the directory in view, or of an orbit's band.
+    const reach = this.viewMode === 'flat' ? 14 : Math.max(3, (this.layout.clusters.radii[this.focus.cluster] ?? 10) * 0.2);
+    const stationsOut = this.mcp.update(t, (key) => this.claude.position(key), reach);
     if (focusMoving || stationsOut) this.labelsDirty = true;
-    return this.pending.length > 0 || t < this.animateUntil || claudeMoving || focusMoving || stationsOut || flowTarget > 0 || Math.abs(flow.value - flowTarget) > 0.01;
+    return morphing || this.pending.length > 0 || t < this.animateUntil || claudeMoving || focusMoving || stationsOut || flowTarget > 0 || Math.abs(flow.value - flowTarget) > 0.01;
   }
 
   consumeLabelsDirty(): boolean {
@@ -392,20 +448,26 @@ export class World {
     return this.nodePosition(node);
   }
 
-  /** A directory's bubble, which the camera frames and zooming draws to the middle of the screen. */
+  /** How large a file is drawn in the view shown. */
+  radiusOf(node: number): number {
+    return this.fileRadius(node);
+  }
+
+  /** A directory's bubble, which the camera frames and zooming draws to the middle of the screen. None in the Flat view. */
   bubbleOf(cluster: number): Sphere | undefined {
-    return cluster >= 0 && cluster < this.clusterCount && this.view.shown[cluster] ? this.spheres[cluster] : undefined;
+    return this.viewMode === 'nested' && cluster >= 0 && cluster < this.clusterCount && this.view.shown[cluster] ? this.spheres[cluster] : undefined;
   }
 
   /** Frames a directory's bubble. Zooming in to it opens it, and zooming out to it backs out of the one on screen. */
   goTo(cluster: number): void {
-    if (cluster < 0 || cluster >= this.clusterCount || !this.view.shown[cluster]) return;
+    if (this.viewMode === 'flat' || cluster < 0 || cluster >= this.clusterCount || !this.view.shown[cluster]) return;
     this.focus.go(cluster, true);
     this.labelsDirty = true;
   }
 
-  /** Back out to the directory around the current one. False at the root. */
+  /** Back out to the directory around the current one. False at the root, and in the Flat view. */
   up(): boolean {
+    if (this.viewMode === 'flat') return false;
     const parent = this.view.viewParent[this.focus.cluster];
     if (parent < 0) return false;
     this.goTo(parent);
@@ -414,21 +476,29 @@ export class World {
 
   /** The current directory's sub-directory names win, active files come next, then as many file names as fit (hubs first). */
   labelSpecs(): LabelSpec[] {
-    const { uFocus, uFocusFrom, uFocusMix } = this.uniforms;
-    const shown = uFocusMix.value < 0.5 ? uFocusFrom.value : uFocus.value;
-    if (shown !== this.contentLabelsFor) {
-      this.contentLabels = this.labelsInside(shown);
-      this.contentLabelsFor = shown;
+    const mix = this.uniforms.uFlatMix.value;
+    const specs: LabelSpec[] = [];
+    // While the files fly between the views, only the labels that follow a file stay up.
+    if (mix <= 0.001) {
+      const { uFocus, uFocusFrom, uFocusMix } = this.uniforms;
+      const shown = uFocusMix.value < 0.5 ? uFocusFrom.value : uFocus.value;
+      if (shown !== this.contentLabelsFor) {
+        this.contentLabels = this.labelsInside(shown);
+        this.contentLabelsFor = shown;
+      }
+      specs.push(...this.contentLabels);
+    } else if (mix >= 0.999 && this.flat) {
+      specs.push(...this.flatLabels(this.flat));
     }
-    const specs = [...this.contentLabels];
+    const below = mix >= 0.5;
     for (const { kind, node, at } of this.touched) {
       if (this.state.isRemoving(node)) continue;
-      specs.push({ key: `${kind}:${node}`, kind, text: this.graph.nodes.names[node], position: this.nodePosition(node), lift: this.fileRadius(node), priority: 5000 + at });
+      specs.push({ key: `${kind}:${node}`, kind, text: this.graph.nodes.names[node], position: this.nodePosition(node), lift: this.fileRadius(node) * (below ? -1 : 1), below, priority: 5000 + at });
     }
     specs.push(...this.mcp.labelSpecs(this.uniforms.uTime.value));
     if (this.hovered.kind === 'node') {
       const i = this.hovered.index;
-      specs.push({ key: `hover:${i}`, kind: 'hover', text: this.graph.nodes.names[i], position: this.nodePosition(i), lift: this.fileRadius(i), priority: 1e9 });
+      specs.push({ key: `hover:${i}`, kind: 'hover', text: this.graph.nodes.names[i], position: this.nodePosition(i), lift: this.fileRadius(i) * (below ? -1 : 1), below, priority: 1e9 });
     }
     return specs;
   }
@@ -441,10 +511,16 @@ export class World {
     this.particles.points.visible = !on;
     this.claude.setPickPass(on);
     this.mcp.group.visible = !on;
+    if (this.neurons) this.neurons.lines.visible = !on;
+    if (this.orbits) this.orbits.group.visible = !on;
   }
 
   dispose(): void {
     this.stage.scene.remove(this.nodes.mesh, this.bubbles.mesh, this.edges.lines, this.particles.points, this.claude.group, this.mcp.group);
+    if (this.neurons) this.stage.scene.remove(this.neurons.lines);
+    if (this.orbits) this.stage.scene.remove(this.orbits.group);
+    this.neurons?.dispose();
+    this.orbits?.dispose();
     this.nodes.dispose();
     this.bubbles.dispose();
     this.edges.dispose();
@@ -457,7 +533,14 @@ export class World {
   /** Takes over the replaced World's clock, glows, comets, firing, Claude, hover and focus. The camera is left where it is. */
   private adopt(previous: World, remap: Int32Array): void {
     const uniforms = this.uniforms;
-    for (const name of ['uTime', 'uRestT', 'uFlow', 'uThinkStart', 'uThinkEnd'] as const) uniforms[name].value = previous.uniforms[name].value;
+    for (const name of ['uTime', 'uRestT', 'uFlow', 'uThinkStart', 'uThinkEnd', 'uFlatMix'] as const) uniforms[name].value = previous.uniforms[name].value;
+    // The view carries on, and so does a flight between views; the Flat layout keeps every surviving file's slot.
+    this.viewMode = previous.viewMode;
+    this.morph = previous.morph;
+    if (previous.flat && (this.viewMode === 'flat' || uniforms.uFlatMix.value > 0)) {
+      this.flat = flatLayout(this.graph, { layout: previous.flat, remap });
+      this.buildFlat();
+    }
 
     const byLabel = new Map(this.layout.clusters.labels.map((label, c) => [label, c]));
     const clusterRemap = Int32Array.from(previous.layout.clusters.labels, (label) => byLabel.get(label) ?? -1);
@@ -476,6 +559,8 @@ export class World {
     this.bubbles.adopt(previous.bubbles, clusterRemap);
     this.particles.adopt(previous.particles);
     this.claude.adopt(previous.claude);
+    if (this.viewMode === 'flat') this.claude.rehome(this.home());
+    this.fitCamera();
     this.mcp.adopt(previous.mcp);
     const open = directory(previous.focus.opened);
     this.focus.adopt(previous.focus, open, open !== cluster(previous.focus.opened), cluster);
@@ -632,8 +717,99 @@ export class World {
   /** The conversation's or subagent's star moves over the file it works on, at the scale of the directory in view, and flares cyan for a read or amber for an edit. */
   private moveClaude(node: number, kind: 'read' | 'edit', t: number, key: string): void {
     const point = this.nodePosition(node);
-    point.y += Math.max(3, this.layout.clusters.radii[this.focus.cluster] * 0.1);
+    point.y += this.viewMode === 'flat' ? this.fileRadius(node) + 4 : Math.max(3, this.layout.clusters.radii[this.focus.cluster] * 0.1);
     this.claude.workOn(key, point, kind, t);
+  }
+
+  /** Plays out the flight between the views, easing in and out. Returns whether it is still under way. */
+  private advanceMorph(now: number): boolean {
+    const morph = this.morph;
+    if (!morph) return false;
+    const t = Math.min(1, Math.max(0, (now - morph.start) / morph.duration));
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    this.uniforms.uFlatMix.value = morph.from + (morph.to - morph.from) * eased;
+    this.labelsDirty = true;
+    if (t >= 1) this.morph = undefined;
+    return true;
+  }
+
+  /** The Flat view's spheres and icons on the file mesh, its neurons and its orbits. */
+  private buildFlat(): void {
+    const flat = this.flat!;
+    this.nodes.setFlat(flat, this.graph.nodes.names);
+    this.neurons = new NeuronLayer(this.graph.edges, flat, this.fileColors, this.uniforms);
+    this.orbits = new OrbitLayer(flat, this.uniforms);
+    this.stage.scene.add(this.neurons.lines, this.orbits.group);
+  }
+
+  /** Where Claude's first star rests: above the root directory's contents toward the default camera, or above the core. */
+  private home(): THREE.Vector3 {
+    if (this.viewMode === 'flat') return new THREE.Vector3(0, CORE_RADIUS * 3.8, CORE_RADIUS * 1.6);
+    const radius = Math.max(10, this.nestedBounds.radius);
+    return this.nestedBounds.center.clone().add(new THREE.Vector3(0, radius * 0.35, radius * 0.45));
+  }
+
+  /** How near and far the camera draws, and how far out it may go, for the view shown. */
+  private fitCamera(): void {
+    const radius = Math.max(10, this.bounds.radius);
+    const camera = this.stage.camera;
+    camera.near = Math.max(0.05, radius / 4000);
+    camera.far = radius * 40;
+    camera.updateProjectionMatrix();
+    this.stage.controls.maxDistance = radius * 8;
+  }
+
+  /** The names of the groups along their arcs, and of as many files as are large enough on screen, the largest first. */
+  private flatLabels(flat: FlatLayout): LabelSpec[] {
+    const { camera, height } = this.stage;
+    const view = camera.matrixWorldInverse.elements;
+    const projection = camera.projectionMatrix.elements;
+    const { positions, radii } = flat;
+    const candidates: Array<{ node: number; px: number }> = [];
+    for (let i = 0; i < this.graph.nodes.count; i++) {
+      if (this.state.isRemoving(i)) continue;
+      const [x, y, z] = [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
+      const depth = -(view[2] * x + view[6] * y + view[10] * z + view[14]);
+      if (depth <= camera.near) continue;
+      const px = (radii[i] * projection[5] * height * 0.5) / depth;
+      if (px < FLAT_LABEL_PX) continue;
+      const vx = view[0] * x + view[4] * y + view[8] * z + view[12];
+      const vy = view[1] * x + view[5] * y + view[9] * z + view[13];
+      if (Math.abs((projection[0] * vx) / depth) > 1.05 || Math.abs((projection[5] * vy) / depth) > 1.05) continue;
+      candidates.push({ node: i, px });
+    }
+    candidates.sort((a, b) => b.px - a.px);
+    const specs: LabelSpec[] = candidates.slice(0, MAX_FLAT_LABELS).map(({ node, px }) => ({
+      key: `file:${node}`,
+      kind: 'file',
+      text: this.graph.nodes.names[node],
+      position: this.flatPosition(node),
+      lift: -radii[node],
+      below: true,
+      priority: 100 + px,
+    }));
+
+    // Each group is named at the middle of its arc, above its band.
+    const point = [0, 0, 0];
+    for (const arc of flat.arcs) {
+      const ring = flat.rings[arc.ring];
+      ringPoint(ring, arc.start + (arc.columns - ARC_GAP - 1) / 2, (ring.lanes - 1) / 2, point);
+      specs.push({
+        key: `arc:${arc.label}`,
+        kind: 'cluster',
+        text: shortPath(arc.label),
+        detail: arc.count.toLocaleString('en-US'),
+        position: new THREE.Vector3(point[0], point[1], point[2]),
+        lift: halfBand(ring) + 1,
+        priority: 20_000 + arc.count,
+      });
+    }
+    return specs;
+  }
+
+  private flatPosition(node: number): THREE.Vector3 {
+    const positions = this.flat!.positions;
+    return new THREE.Vector3(positions[node * 3], positions[node * 3 + 1], positions[node * 3 + 2]);
   }
 
   private labelsInside(cluster: number): LabelSpec[] {
@@ -660,14 +836,23 @@ export class World {
     return new THREE.Vector3(centers[cluster * 3], centers[cluster * 3 + 1], centers[cluster * 3 + 2]);
   }
 
+  /** Where a file is drawn right now: in its directory, on its orbit, or on its way between them, as nodes.ts has it. */
   private nodePosition(node: number): THREE.Vector3 {
     const positions = this.layout.positions;
-    return new THREE.Vector3(positions[node * 3], positions[node * 3 + 1], positions[node * 3 + 2]);
+    const nested = new THREE.Vector3(positions[node * 3], positions[node * 3 + 1], positions[node * 3 + 2]);
+    const mix = this.uniforms.uFlatMix.value;
+    if (mix <= 0 || !this.flat) return nested;
+    const flat = this.flatPosition(node);
+    let away = THREE.MathUtils.clamp((mix - this.flat.delays[node]) / (1 - MORPH_STAGGER), 0, 1);
+    away = away * away * (3 - 2 * away);
+    const lift = Math.sin(Math.PI * away) * 0.18 * nested.distanceTo(flat);
+    nested.lerp(flat, away).y += lift;
+    return nested;
   }
 
   /** A label lifted this far clears its file. */
   private fileRadius(node: number): number {
-    return nodeRadius(this.graph.nodes.sizes[node]);
+    return this.uniforms.uFlatMix.value >= 0.5 && this.flat ? this.flat.radii[node] : nodeRadius(this.graph.nodes.sizes[node]);
   }
 }
 

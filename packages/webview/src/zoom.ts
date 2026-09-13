@@ -16,6 +16,8 @@ const EPSILON = 1e-4;
 export interface ZoomView {
   /** The bubble under the pointer, if it is a sub-directory of the directory in view: zooming in draws it to the middle. */
   anchor(): Sphere | undefined;
+  /** The file under the pointer when zooming should close in on it (the Flat view): how far it is, and how near the camera may come. */
+  under?(): { distance: number; closest: number } | undefined;
   /** Whether a wheel event may zoom right now (not while a camera move plays). */
   allowed(): boolean;
   /** A frame is due. */
@@ -80,8 +82,16 @@ export class SmoothZoom {
     this.pending -= step;
 
     const { camera, controls } = this;
-    const radius = camera.position.distanceTo(controls.target);
-    const next = THREE.MathUtils.clamp(radius * Math.exp(-step), controls.minDistance, controls.maxDistance);
+    // Measured from a file under the pointer nearer than the orbit target, the zoom closes in on that file and never flies past it.
+    const under = this.view.under?.();
+    const onFile = under !== undefined && under.distance < camera.position.distanceTo(controls.target);
+    const radius = onFile ? under.distance : camera.position.distanceTo(controls.target);
+    const nearest = Math.max(controls.minDistance, onFile ? under.closest : 0);
+    if (step > 0 && radius <= nearest) {
+      this.pending = 0;
+      return false;
+    }
+    const next = THREE.MathUtils.clamp(radius * Math.exp(-step), nearest, controls.maxDistance);
     if (next === radius) return false;
     // Along the ray through the pointer, so the point under it stays put on screen.
     camera.updateMatrixWorld();

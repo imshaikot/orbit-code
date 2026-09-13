@@ -1,5 +1,7 @@
 import { nodeRadius } from '@orbit-code/graph/visual';
 import * as THREE from 'three';
+import { type FlatLayout, MORPH_STAGGER } from './flatLayout';
+import { ICON_BOX, ICON_COLUMNS, ICON_ROWS, iconAtlas, iconOf } from './icons';
 import { REMOVE_S, STATE_GLSL } from './nodeState';
 import { PALETTE } from './palette';
 import { ENCODE_ID_GLSL, FOCUS_GLSL, type SharedUniforms } from './uniforms';
@@ -9,11 +11,15 @@ import { ENCODE_ID_GLSL, FOCUS_GLSL, type SharedUniforms } from './uniforms';
 // its file type. A file is drawn
 // while its directory's contents are shown, or while Claude is working on it. GPU
 // picking renders this same mesh with the PICK variant of its shaders swapped in.
+// Each instance also knows its place in the Flat view (flatLayout.ts): as uFlatMix rises the files fly there in a wave,
+// grow, turn solid and take their file type's icon, and every one of them is shown and takes clicks.
 
 /** How strongly a directory's files show through its bubble, one level up, before the view zooms in. */
 const PREVIEW = 0.6;
 /** And two levels up, inside a sub-directory bubble of the directory on screen. */
 const DEEP_PREVIEW = 0.3;
+/** The icon covers this share of a sphere's radius. */
+const ICON_EXTENT = 0.6;
 
 const VERTEX = /* glsl */ `
 ${STATE_GLSL}
@@ -26,6 +32,8 @@ attribute float aDir;
 attribute float aOuter;
 attribute float aDeep;
 attribute vec3 aColor;
+attribute vec4 aFlat; // position and radius in the Flat view
+attribute vec2 aFlatInfo; // how long it waits before setting off, its icon's atlas cell
 varying vec2 vCorner;
 varying vec3 vColor;
 varying float vQuad;
@@ -36,6 +44,9 @@ varying float vShade;
 varying float vSelect;
 varying float vRemove;
 varying float vCore;
+varying float vFlat;
+varying float vIconFade;
+flat varying float vIcon;
 flat varying float vId;
 
 void main() {
@@ -50,11 +61,15 @@ void main() {
   float lit = removed >= 0.0 ? 1.0 : max(max(read, edit), max(hovered, selected));
   // Shown in its own directory, through that directory's bubble one and two levels up, and wherever Claude works on it.
   float preview = max(${PREVIEW.toFixed(2)} * shownIn(aOuter), ${DEEP_PREVIEW.toFixed(2)} * shownIn(aDeep));
-  float shown = max(max(shownIn(aDir), preview), lit);
+  float nestedShown = max(max(shownIn(aDir), preview), lit);
+  // On its way to the Flat view: files leave in a wave, each one eased. Everything shows there.
+  float away = clamp((uFlatMix - aFlatInfo.x) / ${(1 - MORPH_STAGGER).toFixed(3)}, 0.0, 1.0);
+  away = away * away * (3.0 - 2.0 * away);
+  float shown = mix(nestedShown, 1.0, away);
 
 #ifdef PICK
-  // Only the files of the directory on screen take clicks, and never one being deleted.
-  if (isDir(aDir, shownDir()) < 0.5 || removed >= 0.0) {
+  // Only the files of the directory on screen take clicks, every file in the Flat view, and never one being deleted.
+  if ((uFlatMix < 0.5 && isDir(aDir, shownDir()) < 0.5) || removed >= 0.0) {
 #else
   if (shown < 0.01 || removed > ${REMOVE_S.toFixed(2)}) {
 #endif
@@ -62,12 +77,15 @@ void main() {
     return;
   }
 
-  vec3 center = instanceMatrix[3].xyz;
-  float scale = instanceMatrix[0][0] * (1.0 + 0.3 * read + 0.5 * edit + 0.3 * max(hovered, selected)) * mix(0.35, 1.0, shown);
+  vec3 nested = instanceMatrix[3].xyz;
+  // The flight arcs up and over, like a launch into orbit.
+  vec3 center = mix(nested, aFlat.xyz, away) + vec3(0.0, sin(3.14159265 * away) * 0.18 * distance(nested, aFlat.xyz), 0.0);
+  float radius = mix(instanceMatrix[0][0] * mix(0.35, 1.0, nestedShown), aFlat.w, away);
+  float scale = radius * (1.0 + 0.3 * read + 0.5 * edit + 0.3 * max(hovered, selected));
   vec4 viewPosition = modelViewMatrix * vec4(center, 1.0);
   // Never let a file shrink below a few CSS px: however big the bubbles beside it, it can still be seen and clicked.
   float pixelsPerUnit = projectionMatrix[1][1] * uViewportHeight * 0.5 / max(-viewPosition.z, 1e-3);
-  scale = max(scale, mix(1.5, 4.5, shown) / pixelsPerUnit);
+  scale = max(scale, mix(mix(1.5, 4.5, nestedShown), 3.0, away) / pixelsPerUnit);
 
 #ifdef PICK
   float quad = 1.0;
@@ -93,6 +111,10 @@ void main() {
   vSelect = selected > 0.5 ? max(0.0, uTime - uSelectedAt) : -1.0;
   vRemove = removed;
   vCore = core;
+  vFlat = away;
+  // An icon too small to read is left off rather than drawn as noise.
+  vIconFade = smoothstep(7.0, 13.0, scale * pixelsPerUnit) * away;
+  vIcon = aFlatInfo.y;
   vId = id + 1.0;
 }
 `;
@@ -104,6 +126,8 @@ uniform vec3 uEditColor;
 uniform vec3 uSelectColor;
 uniform vec3 uDangerColor;
 uniform float uSelectTone;
+uniform sampler2D uIcons;
+uniform vec2 uIconGrid;
 varying vec2 vCorner;
 varying vec3 vColor;
 varying float vQuad;
@@ -114,7 +138,17 @@ varying float vShade;
 varying float vSelect;
 varying float vRemove;
 varying float vCore;
+varying float vFlat;
+varying float vIconFade;
+flat varying float vIcon;
 flat varying float vId;
+
+// The icon's ink at \`box\`, in [-1, 1] across its glyph box with y down; nothing outside it.
+float icon(vec2 box) {
+  vec2 cell = vec2(mod(vIcon, uIconGrid.x), floor(vIcon / uIconGrid.x));
+  float inside = step(abs(box.x), 1.2) * step(abs(box.y), 1.2);
+  return texture2D(uIcons, (cell + 0.5 + box * ${ICON_BOX.toFixed(3)}) / uIconGrid).a * inside;
+}
 
 void main() {
   vec2 p = vCorner * vQuad;
@@ -129,6 +163,24 @@ void main() {
     float z = sqrt(max(0.0, 1.0 - dot(q, q)));
     float light = 0.32 + 0.68 * max(dot(vec3(q, z), vec3(-0.36, 0.56, 0.75)), 0.0);
     vec3 color = vColor * (light + pow(1.0 - z, 3.0) * 0.45) * vShade;
+    if (vFlat > 0.001) {
+      // Solid: a lit body darker underneath, a cool rim, the icon printed on the front, and a gloss spot over it all.
+      vec3 n = vec3(q, z);
+      vec3 key = normalize(vec3(-0.42, 0.6, 0.68));
+      float diffuse = max(dot(n, key), 0.0);
+      float rim = pow(1.0 - z, 2.6);
+      vec3 solid = vColor * (0.28 + 0.8 * diffuse) * mix(0.66, 1.0, smoothstep(-0.9, 0.35, q.y));
+      solid += mix(vColor, vec3(0.78, 0.84, 1.0), 0.5) * rim * 0.42;
+      float luma = dot(vColor, vec3(0.2126, 0.7152, 0.0722));
+      bool pale = luma > 0.58;
+      float ink = icon(vec2(q.x, -q.y) / ${ICON_EXTENT.toFixed(2)});
+      float shadow = icon(vec2(q.x - 0.045, -(q.y + 0.055)) / ${ICON_EXTENT.toFixed(2)});
+      solid = mix(solid, solid * 0.5, shadow * (1.0 - ink) * (pale ? 0.2 : 0.6) * vIconFade);
+      vec3 inkColor = pale ? vec3(0.05, 0.07, 0.15) : mix(vec3(1.0), vColor, 0.1) * (0.84 + 0.24 * diffuse);
+      solid = mix(solid, inkColor, ink * 0.95 * vIconFade);
+      solid += vec3(pow(max(dot(n, normalize(key + vec3(0.0, 0.0, 1.0))), 0.0), 60.0) * 0.5);
+      color = mix(color, solid * vShade, vFlat);
+    }
     color = mix(color, uReadColor * (0.7 + 0.35 * light), clamp(vRead * 1.1, 0.0, 1.0));
     color = mix(color, uEditColor * (0.75 + 0.35 * light), clamp(vEdit * 1.2, 0.0, 1.0));
     if (vRemove >= 0.0) color = mix(color, mix(uDangerColor, vec3(1.0), 0.45), 1.0 - smoothstep(0.0, 0.25, vRemove));
@@ -159,11 +211,18 @@ void main() {
 }
 `;
 
+/** Stands in for the icon atlas until the Flat view is first shown. */
+const NO_ICONS = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+NO_ICONS.needsUpdate = true;
+
 export class NodeLayer {
   readonly mesh: THREE.InstancedMesh;
   private readonly visibleMaterial: THREE.ShaderMaterial;
   private readonly pickMaterial: THREE.ShaderMaterial;
   private readonly geometry: THREE.BufferGeometry;
+  private readonly flat: THREE.InstancedBufferAttribute;
+  private readonly flatInfo: THREE.InstancedBufferAttribute;
+  private readonly icons: { value: THREE.Texture };
 
   /**
    * `colors`: rgb per file, its file type's colour. `clusterOf` (the directory each file sits in) and `viewParent`
@@ -178,11 +237,18 @@ export class NodeLayer {
     this.geometry.setAttribute('aOuter', new THREE.InstancedBufferAttribute(Float32Array.from(clusterOf, (c) => viewParent[c]), 1));
     this.geometry.setAttribute('aDeep', new THREE.InstancedBufferAttribute(Float32Array.from(clusterOf, (c) => (viewParent[c] < 0 ? -1 : viewParent[viewParent[c]])), 1));
     this.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
+    this.flat = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
+    this.flatInfo = new THREE.InstancedBufferAttribute(new Float32Array(count * 2), 2);
+    this.geometry.setAttribute('aFlat', this.flat);
+    this.geometry.setAttribute('aFlatInfo', this.flatInfo);
 
+    this.icons = { value: NO_ICONS };
     const shaderUniforms = {
       ...uniforms,
       uSelectColor: { value: new THREE.Vector3(...PALETTE.think) },
       uDangerColor: { value: new THREE.Vector3(...PALETTE.error) },
+      uIcons: this.icons,
+      uIconGrid: { value: new THREE.Vector2(ICON_COLUMNS, ICON_ROWS) },
     };
     this.visibleMaterial = new THREE.ShaderMaterial({
       vertexShader: VERTEX,
@@ -209,6 +275,20 @@ export class NodeLayer {
     this.mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
     this.mesh.instanceMatrix.needsUpdate = true;
     this.mesh.frustumCulled = false;
+  }
+
+  /** Where each file sits in the Flat view, how big, when it sets off, and its icon. `names`: basenames by node. */
+  setFlat(layout: FlatLayout, names: readonly string[]): void {
+    const flat = this.flat.array as Float32Array;
+    const info = this.flatInfo.array as Float32Array;
+    for (let i = 0; i < names.length; i++) {
+      flat.set([layout.positions[i * 3], layout.positions[i * 3 + 1], layout.positions[i * 3 + 2], layout.radii[i]], i * 4);
+      info[i * 2] = layout.delays[i];
+      info[i * 2 + 1] = iconOf(names[i]);
+    }
+    this.flat.needsUpdate = true;
+    this.flatInfo.needsUpdate = true;
+    this.icons.value = iconAtlas();
   }
 
   /** Switches the mesh to its id-pass shaders for the 1×1 pick render, and back. */

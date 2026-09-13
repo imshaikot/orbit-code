@@ -2,6 +2,7 @@ import { FILE_KINDS, FILE_KIND_LABELS, type FileKind, fileKindOf } from '@orbit-
 import type { ActivityDelta, GraphContent, GraphDelta, GraphUpdate } from '@orbit-code/protocol';
 import type { HostBridge } from './host';
 import type { GraphSummary, KindGroup } from './hud/identity';
+import type { ViewMode } from './hud/viewTabs';
 import { computeLayout } from './layout/client';
 import { KIND_COLORS, type Rgb } from './palette';
 import type { Stage } from './stage';
@@ -27,6 +28,8 @@ export class SceneController {
   private generation = 0;
   private cancelLayout: (() => void) | undefined;
   private working = false;
+  /** Every World starts in this view; a live update's World continues its predecessor's. */
+  private mode: ViewMode = 'nested';
 
   constructor(
     private readonly stage: Stage,
@@ -85,6 +88,7 @@ export class SceneController {
 
     this.view.hideStatus();
     const world = new World(this.stage, delta, layout);
+    world.setMode(this.mode, false);
     world.setWorking(this.working);
     this.current = world;
     this.host.post({ type: 'sceneReady', hash: delta.hash });
@@ -102,6 +106,12 @@ export class SceneController {
   setWorking(working: boolean): void {
     this.working = working;
     this.current?.setWorking(working);
+  }
+
+  /** Shows the Nested or Flat view, in the World there is (animated, unless `animate` is false) and in every one after it. */
+  setMode(mode: ViewMode, animate: boolean): void {
+    this.mode = mode;
+    this.current?.setMode(mode, animate);
   }
 
   private update(previous: World, update: GraphUpdate): void {

@@ -212,6 +212,12 @@ export class ClaudeNode {
     this.busyTarget = 1;
   }
 
+  /** Moves home to `point`, heading there if it was heading home, ring and all. */
+  rehome(point: THREE.Vector3): void {
+    if (this.target.equals(this.home)) this.target.copy(point);
+    this.home.copy(point);
+  }
+
   /** Makes `point` home and heads there: a subagent going back into its conversation's star, which may be moving. */
   returnTo(point: THREE.Vector3): void {
     this.home.copy(point);
@@ -428,6 +434,12 @@ export class ClaudeLayer {
     this.tethers.visible = !on;
   }
 
+  /** Home moves (the view switched between Nested and Flat): every conversation's star takes its place around the new one. */
+  rehome(home: THREE.Vector3): void {
+    this.home.copy(home);
+    for (const star of this.stars) if (!star.subagent) star.rehome(this.homeOf(star.id));
+  }
+
   /** A turn is running somewhere: a star at home that no conversation has yet wears the ring, until it is taken or the turns end. */
   busy(): void {
     const free = this.stars.find((candidate) => !candidate.subagent && !this.isAssigned(candidate) && !candidate.retiring);
@@ -527,12 +539,15 @@ export class ClaudeLayer {
     return false;
   }
 
-  /** A new star for a conversation; those after the first have homes on a ring around it. */
+  /** A new star for a conversation. */
   private add(fadeIn: boolean): ClaudeNode {
-    const k = this.made;
-    const angle = k * GOLDEN_ANGLE;
-    const home = k === 0 ? this.home.clone() : this.home.clone().add(new THREE.Vector3(Math.cos(angle), 0.2 * Math.sin(angle * 1.7), Math.sin(angle)).multiplyScalar(this.size * HOME_RING));
-    return this.make(home, this.size, fadeIn, false);
+    return this.make(this.homeOf(this.made), this.size, fadeIn, false);
+  }
+
+  /** The home of the conversation star `id`: the layer's home for the first, a place on a ring around it for the others. */
+  private homeOf(id: number): THREE.Vector3 {
+    const angle = id * GOLDEN_ANGLE;
+    return id === 0 ? this.home.clone() : this.home.clone().add(new THREE.Vector3(Math.cos(angle), 0.2 * Math.sin(angle * 1.7), Math.sin(angle)).multiplyScalar(this.size * HOME_RING));
   }
 
   private make(home: THREE.Vector3, size: number, fadeIn: boolean, subagent: boolean): ClaudeNode {

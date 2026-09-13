@@ -9,8 +9,10 @@ export interface LabelSpec {
   text: string;
   detail?: string;
   position: THREE.Vector3;
-  /** World units to lift the anchor along the camera's up axis (to sit above a shell). */
+  /** World units to lift the anchor along the camera's up axis (to sit above a shell); negative lowers it. */
   lift?: number;
+  /** Hangs below the anchor instead of standing on it: the Flat view names a file under its sphere. */
+  below?: boolean;
   priority: number;
 }
 
@@ -50,7 +52,8 @@ export class Labels {
 
       const w = estimateWidth(spec);
       const left = (projected.x * 0.5 + 0.5) * width - w / 2;
-      const top = (-projected.y * 0.5 + 0.5) * height - LINE_HEIGHT - (spec.kind === 'cluster' || spec.kind === 'dir' ? 2 : 9);
+      const anchor = (-projected.y * 0.5 + 0.5) * height;
+      const top = spec.below ? anchor + 1 : anchor - LINE_HEIGHT - (spec.kind === 'cluster' || spec.kind === 'dir' ? 2 : 9);
       if (left < MARGIN || top < MARGIN || left + w > width - MARGIN || top + LINE_HEIGHT > height - MARGIN) continue;
       if (spec.kind !== 'hover' && this.overlaps(left, top, left + w, top + LINE_HEIGHT)) continue;
       this.placed.push(left, top, left + w, top + LINE_HEIGHT);

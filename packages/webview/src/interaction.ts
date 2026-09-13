@@ -143,6 +143,12 @@ export class Interaction {
     if (this.pointer && !this.dragging) this.motionPickWanted = true;
   }
 
+  /** The file the pointer is over, from the latest pick over the current World, or undefined. */
+  hoveredNode(): number | undefined {
+    const last = this.last;
+    return this.pointer && last && last.world === this.world() && last.picked.kind === 'node' ? last.picked.index : undefined;
+  }
+
   /** The directory bubble the pointer is over, from the latest pick over the current World, or undefined. */
   hoveredCluster(): number | undefined {
     const last = this.last;

@@ -18,6 +18,7 @@ import { SessionPanel } from './hud/sessionPanel';
 import { SparkPopup } from './hud/sparkPopup';
 import { StatusOverlay } from './hud/status';
 import { Tooltip } from './hud/tooltip';
+import { type ViewMode, ViewTabs } from './hud/viewTabs';
 import { Interaction } from './interaction';
 import { Labels } from './labels';
 import { KIND_COLORS, cssColor } from './palette';
@@ -46,7 +47,14 @@ const identity = new Identity(hud, {
   goTo: (cluster) => interaction.goTo(cluster),
   reindex: () => host.post({ type: 'reindex' }),
 });
-hud.append(el('p', 'hint', 'Click a bubble to look inside a directory, or a file for what to do with it. Esc goes back up.'));
+const HINTS: Record<ViewMode, string> = {
+  nested: 'Click a bubble to look inside a directory, or a file for what to do with it. Esc goes back up.',
+  flat: 'Every file on its orbit. Click one for what to do with it, drag to orbit, scroll to zoom.',
+};
+const hint = el('p', 'hint', HINTS.nested);
+hud.append(hint);
+const viewTabs = new ViewTabs(hud, { select: (mode) => showView(mode, true) });
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const files = new FileRequests(host);
 /** Until the host says otherwise (`host`), it is one with editor tabs, as VS Code is. */
 let capabilities: HostCapabilities = { tabs: true };
@@ -202,15 +210,25 @@ const zoom = new SmoothZoom(stage.renderer.domElement, stage.camera, stage.contr
     const cluster = interaction.hoveredCluster();
     return world && cluster !== undefined ? world.bubbleOf(cluster) : undefined;
   },
+  under: () => {
+    const world = scene.world;
+    const node = interaction.hoveredNode();
+    if (!world || world.mode !== 'flat' || node === undefined) return undefined;
+    return { distance: stage.camera.position.distanceTo(world.positionOf(node)), closest: world.radiusOf(node) * 5 };
+  },
   allowed: () => scene.world !== undefined && !scene.world.focus.animating,
   wake: loop.wake,
 });
 
 stage.controls.addEventListener('change', relabel);
 
+// The view chosen before the page was reloaded, when the host kept it.
+if (host.kept('view') === 'flat') showView('flat', false);
+
 (window as unknown as { __orbit: unknown }).__orbit = {
   debug,
   world: () => scene.world,
+  view: () => viewTabs.mode,
   constellation: () => session.constellationState,
   editor: () => editor.debugState(),
   fileMenu: () => ({ open: fileMenu.isOpen, path: fileMenu.path, busy: fileMenu.busy }),
@@ -271,8 +289,8 @@ function frame({ now, dt, resumed }: FrameSample): Pace {
   }
 
   const started = performance.now();
-  // The eye follows the camera: a move in progress, a drag or a wheel, and what the pointer is over.
-  let smooth = world.focus.animating;
+  // The eye follows the camera: a move in progress, a drag or a wheel, and what the pointer is over; and files flying between views.
+  let smooth = world.focus.animating || world.morphing;
   let keepGoing = world.update(dt, now) || constellationOpen;
   // Zooming opens and leaves directories by itself; the path follows, and what is under the pointer changes.
   if (world.focus.consumeChanged()) {
@@ -346,6 +364,20 @@ function samplePerf(now: number, cpu: number, calls: number, triangles: number, 
 function relabel(): void {
   labelsDirty = true;
   loop.wake();
+}
+
+/** Nested or Flat: the tabs, the hint and the scene follow, and the host keeps the choice for a reload. */
+function showView(mode: ViewMode, animate: boolean): void {
+  viewTabs.set(mode);
+  hint.textContent = HINTS[mode];
+  hud.dataset.view = mode;
+  host.keep('view', mode);
+  zoom.cancel();
+  tooltip.hide();
+  scene.setMode(mode, animate && !reducedMotion.matches);
+  const world = scene.world;
+  if (world) identity.setLocation(world.location());
+  relabel();
 }
 
 /** A click on a file: its card opens beside it, and git is asked whether it has changes to show. */

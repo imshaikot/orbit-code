@@ -3,6 +3,9 @@ import type { HostToWebview, WebviewToHost } from '@orbit-code/protocol';
 /** The page's way out to its host. */
 export interface HostTransport {
   postMessage(message: WebviewToHost): void;
+  /** VS Code keeps this for the page while its panel lives, hidden or not; other hosts may leave both out. */
+  getState?(): unknown;
+  setState?(state: unknown): void;
 }
 
 declare global {
@@ -45,6 +48,19 @@ export class HostBridge {
 
   log(level: 'info' | 'warn' | 'error', message: string): void {
     this.post({ type: 'log', level, message });
+  }
+
+  /** What `keep` stored under `key`, when the host keeps state for the page. */
+  kept(key: string): unknown {
+    const state = this.transport.getState?.();
+    return state !== null && typeof state === 'object' ? (state as Record<string, unknown>)[key] : undefined;
+  }
+
+  /** Asks the host to keep `value` for the page under `key`; a host that keeps nothing drops it. */
+  keep(key: string, value: unknown): void {
+    if (!this.transport.setState) return;
+    const state = this.transport.getState?.();
+    this.transport.setState({ ...(state !== null && typeof state === 'object' ? state : {}), [key]: value });
   }
 }
 

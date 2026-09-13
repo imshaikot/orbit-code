@@ -51,11 +51,13 @@ void main() {
   float ghost = aParent < -0.5 ? 0.0 : ${GHOST.toFixed(2)} * besideShown(id, aParent);
   // Shown inside its parent's bubble while the directory around that one is on screen, fainter one level further out.
   float preview = max(aOuter < -0.5 ? 0.0 : ${PREVIEW.toFixed(2)} * shownIn(aOuter), aDeep < -0.5 ? 0.0 : ${DEEP_PREVIEW.toFixed(2)} * shownIn(aDeep));
+  // The Flat view has no directories: bubbles fade as the files leave them, and take no clicks there.
+  float nested = 1.0 - smoothstep(0.0, 0.45, uFlatMix);
 #ifdef PICK
   // Only the sub-directories of the directory on screen take clicks.
-  if (aParent < -0.5 || isDir(aParent, shownDir()) < 0.5) {
+  if (aParent < -0.5 || isDir(aParent, shownDir()) < 0.5 || uFlatMix >= 0.5) {
 #else
-  if (body + frame + preview + ghost < 0.01) {
+  if ((body + frame + preview + ghost) * nested < 0.01) {
 #endif
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -74,10 +76,10 @@ void main() {
   float dt = uTime - aActiveAt;
   vActive = aActiveAt < 0.0 || dt < 0.0 ? 0.0 : (0.35 + 0.65 * exp(-dt * 0.8)) * restFade(aActiveAt);
   vHover = abs(id - uHoverCluster) < 0.5 ? 1.0 : 0.0;
-  vBody = body;
-  vFrame = frame;
-  vPreview = preview;
-  vGhost = ghost;
+  vBody = body * nested;
+  vFrame = frame * nested;
+  vPreview = preview * nested;
+  vGhost = ghost * nested;
   vCorner = position.xy;
   vColor = aColor;
   vId = id + ${PICK_CLUSTER_BASE}.0;
