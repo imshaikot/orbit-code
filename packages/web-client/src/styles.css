@@ -1,0 +1,318 @@
+/* The web client's prompt and notices. Injected by client.ts with the page nonce; webview.js brings its own styles. */
+
+html,
+body {
+  margin: 0;
+  background: #0a1024;
+}
+
+.wc {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  display: grid;
+  /* A track no wider than the page, so the card's nowrap command can't widen it past a narrow screen. */
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  box-sizing: border-box;
+  padding: 40px 16px;
+  background: radial-gradient(1100px 640px at 50% -12%, #19245a 0%, #0a1024 62%);
+  color: #dfe6ff;
+  font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wc *,
+.wc-notice * {
+  box-sizing: border-box;
+}
+
+.wc-card {
+  width: min(580px, 100%);
+}
+
+.wc-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 30px;
+  color: #dfe6ff;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+}
+
+.wc-star {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #a58bff;
+  box-shadow: 0 0 14px 4px rgba(165, 139, 255, 0.5);
+}
+
+.wc h1 {
+  margin: 0 0 12px;
+  color: #fff;
+  font-size: clamp(27px, 5.4vw, 36px);
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+
+.wc-lede {
+  margin: 0 0 28px;
+  color: #aab4d6;
+}
+
+.wc-steps {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.wc-step {
+  position: relative;
+  padding: 18px 18px 18px 58px;
+  border: 1px solid rgba(160, 180, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(20, 28, 62, 0.55);
+  counter-increment: step;
+  transition: border-color 200ms ease;
+}
+
+.wc-step::before {
+  content: counter(step);
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #4b5687;
+  color: #0a1024;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background-color 200ms ease;
+}
+
+.wc-step[data-state='current'] {
+  border-color: rgba(165, 139, 255, 0.55);
+}
+
+.wc-step[data-state='current']::before {
+  background: #a58bff;
+}
+
+.wc-step[data-state='done']::before {
+  content: '\2713';
+  background: #6fe3ff;
+}
+
+.wc h2 {
+  margin: 2px 0 4px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.wc-step p {
+  margin: 0 0 12px;
+  color: #aab4d6;
+  font-size: 14px;
+}
+
+.wc-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid rgba(160, 180, 255, 0.16);
+  border-radius: 10px;
+  background: #060a1a;
+}
+
+.wc-command code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  color: #e8ecff;
+  font: 13.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+
+.wc-button {
+  flex: none;
+  padding: 8px 15px;
+  border: 0;
+  border-radius: 8px;
+  background: #a58bff;
+  color: #0a1024;
+  font: 600 14px/1.2 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+  appearance: none;
+}
+
+.wc-button:hover {
+  background: #baa5ff;
+}
+
+.wc-button.wc-quiet {
+  background: rgba(160, 180, 255, 0.12);
+  color: #dfe6ff;
+}
+
+.wc-button.wc-quiet:hover {
+  background: rgba(160, 180, 255, 0.2);
+}
+
+.wc-button:focus-visible,
+.wc-input:focus-visible,
+.wc a:focus-visible {
+  outline: 2px solid #6fe3ff;
+  outline-offset: 2px;
+}
+
+.wc-link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wc-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(160, 180, 255, 0.22);
+  border-radius: 10px;
+  background: #060a1a;
+  color: #e8ecff;
+  font: 13.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.wc-input::placeholder {
+  color: #6c769c;
+}
+
+.wc-input:focus {
+  border-color: #a58bff;
+  box-shadow: 0 0 0 3px rgba(165, 139, 255, 0.22);
+  outline: none;
+}
+
+.wc-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 22px;
+  margin: 18px 2px 0;
+  color: #aab4d6;
+  font-size: 14px;
+}
+
+.wc-status::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: #4b5687;
+}
+
+.wc-status[data-tone='wait']::before {
+  background: #c9a8ff;
+  animation: wc-pulse 1.6s ease-in-out infinite;
+}
+
+.wc-status[data-tone='ok']::before {
+  background: #6fe3ff;
+}
+
+.wc-status[data-tone='error'] {
+  color: #ffc4ce;
+}
+
+.wc-status[data-tone='error']::before {
+  background: #ff7a90;
+}
+
+@keyframes wc-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+.wc-notes {
+  display: grid;
+  gap: 6px;
+  margin: 22px 2px 0;
+  color: #7f8ab0;
+  font-size: 13px;
+}
+
+.wc-notes p {
+  margin: 0;
+}
+
+.wc-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 20px 2px 0;
+  font-size: 14px;
+}
+
+.wc-links a {
+  color: #b9c6ff;
+  text-underline-offset: 3px;
+}
+
+.wc-links a:hover {
+  color: #fff;
+}
+
+.wc-notice {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  z-index: 2147483000;
+  width: min(420px, calc(100% - 32px));
+  padding: 16px 18px 18px;
+  border: 1px solid rgba(165, 139, 255, 0.45);
+  border-radius: 14px;
+  background: rgba(12, 18, 44, 0.95);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  color: #dfe6ff;
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  transform: translateX(-50%);
+}
+
+.wc-notice h2 {
+  margin: 0 0 4px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.wc-notice p {
+  margin: 0 0 14px;
+  color: #aab4d6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wc-status[data-tone='wait']::before {
+    animation: none;
+  }
+
+  .wc-step,
+  .wc-step::before {
+    transition: none;
+  }
+}

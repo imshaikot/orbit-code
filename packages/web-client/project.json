@@ -1,0 +1,28 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "web-client",
+  "projectType": "library",
+  "sourceRoot": "packages/web-client/src",
+  "tags": ["type:lib", "runtime:browser"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "node build.mjs", "cwd": "{projectRoot}" },
+      "configurations": { "production": { "command": "node build.mjs --production" } },
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "watch": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "options": { "command": "node build.mjs --watch", "cwd": "{projectRoot}" },
+      "dependsOn": ["^watch"]
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": { "command": "node packages/web-client/scripts/serve.mjs" },
+      "dependsOn": ["build"],
+      "cache": false
+    },
+    "typecheck": {}
+  }
+}

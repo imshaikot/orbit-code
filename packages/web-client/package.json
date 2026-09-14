@@ -1,0 +1,17 @@
+{
+  "name": "@orbit-code/web-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Orbit in a browser tab: the page at orbit-code.imshaikot.com/web-client/ that guides starting a local orbit-server, connects to it on 127.0.0.1 and runs the webview over its WebSocket. Built as dist/web-client.js, with a manifest of the ports and CSP a hosting page must use.",
+  "license": "MIT",
+  "exports": {
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@orbit-code/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@orbit-code/webview": "workspace:*"
+  }
+}
