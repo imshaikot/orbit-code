@@ -1,6 +1,6 @@
 # Using Orbit
 
-This page reads the same whether Orbit runs in VS Code or as the desktop app: the panel is the same bundle in both. Where the two differ, the difference is called out. Installing and configuring each host is in [apps/vscode/README.md](../apps/vscode/README.md) and [apps/desktop/README.md](../apps/desktop/README.md).
+This page reads the same whether Orbit runs in VS Code or as the desktop app: the panel is the same bundle in both. Where the two differ, the difference is called out. Installing is on the website's [install guide](https://orbit-code.imshaikot.com/install/); configuring each host is in [apps/vscode/README.md](../apps/vscode/README.md) and [apps/desktop/README.md](../apps/desktop/README.md).
 
 ## What you are looking at
 

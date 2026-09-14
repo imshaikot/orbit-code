@@ -69,7 +69,7 @@ CI runs typecheck, build, boundaries, an index of this repository, packaging, bo
 - One change per pull request. Several commits are welcome: one per module or step, in the order a reader would follow.
 - A commit's subject line is its message, under 100 characters. Use `<Area>: <description>` when the change sits in one module (`Webview:`, `HUD:`, `Indexer:`, `Session service:`, `Desktop:`, `Harness:`, `README:`), or a plain sentence when it doesn't. The description is lowercase, with no trailing period. `git log --oneline` shows the convention.
 - For anything visible, add screenshots or a short recording; the harness writes screenshots to `.harness/out/`.
-- Update the README or docs page your change makes wrong.
+- Update the README or docs page your change makes wrong. The website, [orbit-code.imshaikot.com](https://orbit-code.imshaikot.com), is built from `docs/` and the extension's, desktop app's and indexer's READMEs, manifests and changelogs, so the fix reaches it too.
 - If users will notice the change in a release, add a version plan and commit it with the change: `yarn nx release plan patch --groups=apps -m "…"` for the extension and the desktop app, which are released together, or `--projects=indexer`. The maintainer cuts releases; [docs/releasing.md](docs/releasing.md) has the procedure.
 
 ## License

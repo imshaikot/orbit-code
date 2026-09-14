@@ -1,6 +1,6 @@
 # @orbit-code/indexer
 
-Indexes a workspace into the dependency graph [Orbit Code](https://github.com/imshaikot/orbit-code) draws: files are nodes, imports are edges, and directories group them.
+Indexes a workspace into the dependency graph [Orbit Code](https://orbit-code.imshaikot.com) ([source](https://github.com/imshaikot/orbit-code)) draws: files are nodes, imports are edges, and directories group them.
 
 - **JS and TS** through dependency-cruiser, once per `tsconfig`/`jsconfig` so each package's path aliases apply, with workspace packages, `exports` and `imports` maps resolved too.
 - **Other languages** (Python, Go, Rust, Java, C#, Swift, PHP, Dart and more) through import scans that resolve with each project's own manifests: `go.mod`, `Cargo.toml`, `pyproject.toml`, `composer.json`, `pubspec.yaml`, `.csproj`, `Package.swift`.

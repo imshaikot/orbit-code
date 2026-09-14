@@ -63,6 +63,8 @@ Lines to know: `agent: <version>` or `agent unavailable: <reason>` (the Claude C
 
 ## Installing
 
+- **Updating.** A Marketplace install updates itself. In an editor that installed a release with the install script (Cursor, Windsurf, VSCodium and the like), run it again: `curl -fsSL https://orbit-code.imshaikot.com/install.sh | sh`, or `irm https://orbit-code.imshaikot.com/install.ps1 | iex` in Windows PowerShell. The [install guide](https://orbit-code.imshaikot.com/install/) lists every channel and how each one updates.
+
 - **Gatekeeper or SmartScreen warns about the desktop app.** The builds are unsigned (macOS ad hoc); allow it once. Signing is a follow-up in `apps/desktop/README.md`.
 - **Notifications don't show from the desktop app on macOS.** An unsigned build's notifications may be suppressed; buttons on notifications are macOS only in any case.
 - **The installed extension doesn't update after `yarn install-local`.** Reload the open VS Code windows. The dev host (`yarn self`) never loads the installed copy.
