@@ -1,0 +1,8 @@
+## 0.2.0 (2026-09-14)
+
+### 🚀 Features
+
+- First release: the workspace as a 3D force-directed dependency graph, with a live Claude Code session moving through it. ([5901902](https://github.com/imshaikot/orbit-code/commit/5901902))
+  Directories are bubbles, files are nodes and imports are lines, for JS/TS, Python, Go, Rust, Java, C#, Swift, PHP, Dart and more, resolved through each project's own config. The graph follows edits within seconds and keeps its layout. Nested and Flat views, and Take a Tour.
+  Claude Code in the panel: prompts from the drawer or **Orbit Code: Ask Claude…**, model, effort and permission mode, several conversations at once, permission and question cards, skills, attached files, history, MCP servers, subagents drawn as their own stars, and Follow Spark. Files Claude reads light up, files it edits pulse, and the import network fires while it thinks.
+  File actions from the graph: diff, edit inline, rename, delete, attach to a prompt.
