@@ -4,6 +4,8 @@ An open-source, live 3D visual alternative to Claude Code in the terminal, for p
 
 Directories are bubbles, files are nodes, imports are lines. Files Claude reads light up cyan, files it edits pulse amber, and the import network fires while it thinks.
 
+**Website:** [orbit-code.imshaikot.com](https://orbit-code.imshaikot.com), with the [install guide](https://orbit-code.imshaikot.com/install/), the [docs](https://orbit-code.imshaikot.com/docs/) and the [changelog](https://orbit-code.imshaikot.com/changelog/).
+
 ## Features
 
 - **Dependency graph for most languages.** JS/TS, Python, Go, Rust, Java, C#, Swift, PHP, Dart and more. Imports resolve through each project's own config (`tsconfig`, `go.mod`, `Cargo.toml`, `pyproject.toml`, …), so monorepos work too.
@@ -25,10 +27,20 @@ Directories are bubbles, files are nodes, imports are lines. Files Claude reads 
 
 ## Install
 
+Search for **Orbit Code** in the Extensions view, or run:
+
 ```sh
-yarn install
-yarn install-local
+code --install-extension imshaikot.orbit-code
 ```
+
+In Cursor, Windsurf, VSCodium and other VS Code based editors, the install script puts the newest release into every editor it finds. Run it again to update.
+
+```sh
+curl -fsSL https://orbit-code.imshaikot.com/install.sh | sh   # macOS and Linux
+irm https://orbit-code.imshaikot.com/install.ps1 | iex        # Windows PowerShell
+```
+
+The [install guide](https://orbit-code.imshaikot.com/install/) has every option, including the desktop app and a build from source.
 
 Reload VS Code, then click the Orbit icon in the activity bar or run **Orbit Code: Open**.
 
@@ -68,11 +80,12 @@ yarn typecheck
 yarn harness     # webview checks in headless Chrome
 yarn smoke       # end-to-end in a real VS Code
 yarn package     # a production .vsix in dist/apps/vscode/
+yarn install-local   # package, then install that build into VS Code
 ```
 
 CI (`.github/workflows/ci.yml`) runs typecheck, build, the package boundary check and an index of the repository on every push to `main` and pull request, then packages a `.vsix` and runs smoke and harness; the harness report and screenshots are an artifact to read. Releases come from Nx Release: a `v<version>` tag attaches the `.vsix` to a GitHub release, and publishes it to the Marketplace and Open VSX once their tokens are set.
 
-The longer documentation is in the repository's `docs/` directory: how to use the view, the architecture, the graph pipeline, how Claude Code is run, contributing, releasing and troubleshooting.
+The longer documentation is on the website: [Using Orbit](https://orbit-code.imshaikot.com/docs/using-orbit/), [Settings and commands](https://orbit-code.imshaikot.com/docs/settings/), [Claude in Orbit](https://orbit-code.imshaikot.com/docs/claude-session/), [Troubleshooting](https://orbit-code.imshaikot.com/docs/troubleshooting/), [Architecture](https://orbit-code.imshaikot.com/docs/architecture/), [The graph pipeline](https://orbit-code.imshaikot.com/docs/graph-pipeline/), [Contributing](https://orbit-code.imshaikot.com/docs/contributing/) and [Releasing](https://orbit-code.imshaikot.com/docs/releasing/). The same pages are in the repository's `docs/` directory.
 
 ## Limitations
 

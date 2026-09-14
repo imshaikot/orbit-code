@@ -16,7 +16,7 @@
   "bugs": {
     "url": "https://github.com/imshaikot/orbit-code/issues"
   },
-  "homepage": "https://github.com/imshaikot/orbit-code#readme",
+  "homepage": "https://orbit-code.imshaikot.com",
   "engines": {
     "vscode": "^1.100.0"
   },
