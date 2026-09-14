@@ -4,6 +4,7 @@
   "private": true,
   "description": "Indexes a workspace into Orbit's dependency graph: dependency-cruiser for JS/TS, manifest-aware import scans for other languages. Runs as a worker thread or as the orbit-index CLI.",
   "license": "MIT",
+  "homepage": "https://orbit-code.imshaikot.com",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/imshaikot/orbit-code.git",

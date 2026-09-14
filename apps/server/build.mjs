@@ -62,7 +62,7 @@ function copyArtifacts({ required }) {
 
 /**
  * The manifest npm sees: the CLI and the two builds it runs, no dependencies, since the bundles carry everything.
- * Name, version, description and repository come from package.json. `files` leaves a dev build's source maps out.
+ * Name, version, description, homepage and repository come from package.json. `files` leaves a dev build's source maps out.
  */
 function writePublishManifest() {
   const manifest = {
@@ -70,6 +70,7 @@ function writePublishManifest() {
     version: source.version,
     description: source.description,
     license: source.license,
+    homepage: source.homepage,
     repository: source.repository,
     keywords: source.keywords,
     bin: { 'orbit-server': 'server.mjs' },

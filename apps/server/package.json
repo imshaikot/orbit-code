@@ -4,6 +4,7 @@
   "private": true,
   "description": "Orbit Code's local server: the Orbit host in one Node process, serving the 3D page on localhost.",
   "license": "MIT",
+  "homepage": "https://orbit-code.imshaikot.com",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/imshaikot/orbit-code.git",

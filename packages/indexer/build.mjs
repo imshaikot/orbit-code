@@ -61,6 +61,7 @@ function writePublishManifest() {
     version: source.version,
     description: source.description,
     license: source.license,
+    homepage: source.homepage,
     repository: source.repository,
     keywords: source.keywords,
     bin: { 'orbit-index': 'indexer.mjs' },
