@@ -7,17 +7,23 @@ import { type World, formatBytes } from './world';
 
 // A tour of the workspace: the camera flies from one place to the next, a directory or a file picked at random (hubs
 // and large files more often than the rest, and nowhere twice until everywhere has been), each time on a fresh
-// bearing, and rests there a while. Some stops get a card with what the graph knows about the place: the most imported
-// file in its directory, the largest, a leaf, an entry point, a directory nothing outside imports from. It runs until
-// stopped; while it does, main.ts keeps the drag, the wheel, clicks, Esc, the breadcrumb and the view tabs off.
+// bearing, and rests there a moment. A leg to a place outside the directory the camera is in first backs out to the
+// directory holding both (in the Flat view, up over the orbits), on the bearing the camera already has, and then
+// swings in to the stop on the new one, so the view zooms out and in as a hand would move it, and never snaps. Some
+// stops get a card with what the graph knows about the place: the most imported file in its directory, the largest,
+// a leaf, an entry point, a directory nothing outside imports from. It runs until stopped; while it does, main.ts
+// keeps the drag, the wheel, clicks, Esc, the breadcrumb and the view tabs off.
 
-/** A leg's flight lasts between these, the longer the further it goes, in milliseconds. */
-const LEG_MIN_MS = 1500;
-const LEG_MAX_MS = 3400;
-/** How long the camera rests at a stop; a card adds reading time, per fact. */
-const DWELL_MS = 2200;
-const CARD_MS = 2400;
-const FACT_MS = 800;
+/** A leg's flight lasts between these, the longer the further it goes, in milliseconds, shared between its segments. */
+const LEG_MIN_MS = 1200;
+const LEG_MAX_MS = 3000;
+const SEGMENT_MIN_MS = 500;
+/** How long the camera rests at a stop: a moment, and a card adds reading time, per fact. */
+const DWELL_MS = 1000;
+const CARD_MS = 1200;
+const FACT_MS = 500;
+/** In the Flat view, a leg rises over the orbits when the stops are further apart than this many times the frame's radius. */
+const FLAT_RISE = 4;
 /** The share of stops that get a card, unless told otherwise. */
 const CARD_SHARE = 0.6;
 /** How far the bearing swings round between stops, in radians, and how often it turns back the other way. */
@@ -92,6 +98,14 @@ interface Stats {
 
 type Phase = 'idle' | 'waiting' | 'leg' | 'dwell';
 
+/** One straight camera move of a leg: out to the directory holding both places, or in to the stop. */
+interface Segment {
+  sphere: Sphere;
+  to: number;
+  bearing: THREE.Vector3;
+  duration: number;
+}
+
 const bearing = new THREE.Vector3();
 
 export class Tour {
@@ -99,6 +113,8 @@ export class Tour {
   private stats: Stats | undefined;
   private phase: Phase = 'idle';
   private stop: Stop | undefined;
+  /** The rest of the leg under way, after the segment the camera is on. */
+  private segments: Segment[] = [];
   private stopCount = 0;
   private dwellUntil = 0;
   private random: () => number = Math.random;
@@ -160,6 +176,7 @@ export class Tour {
     this.world?.select(-1);
     this.phase = 'idle';
     this.stop = undefined;
+    this.segments = [];
     this.world = undefined;
     this.stats = undefined;
   }
@@ -175,6 +192,8 @@ export class Tour {
     if (index >= 0 && (stop.kind === 'file' || world.view.shown[index])) {
       stop.index = index;
       if (this.phase === 'dwell' && stop.kind === 'file') world.select(index);
+      // The segments still to fly named the old World's directories: the way there is planned again from here.
+      else if (this.phase === 'leg' && this.segments.length > 0) this.depart(world, stop);
       return;
     }
     this.stop = undefined;
@@ -188,7 +207,10 @@ export class Tour {
     if (this.phase === 'waiting') {
       if (!world.morphing) this.next(now);
     } else if (this.phase === 'leg') {
-      if (!world.focus.animating) this.arrive(now);
+      if (!world.focus.animating) {
+        if (this.segments.length > 0) this.fly(world);
+        else this.arrive(now);
+      }
     } else if (now >= this.dwellUntil) {
       this.next(now);
     }
@@ -224,7 +246,11 @@ export class Tour {
     }
     this.stop = stop;
     this.phase = 'leg';
+    this.depart(world, stop);
+  }
 
+  /** Plans the way to `stop` from where the camera is, and sets off. */
+  private depart(world: World, stop: Stop): void {
     // The bearing swings on round the axis, now and then turning back; a file in a directory is looked at from an
     // angle that keeps the directory in view and no sub-directory bubble in the way.
     if (this.random() < TURN_BACK) this.swing = -this.swing;
@@ -253,10 +279,42 @@ export class Tour {
       direction = clearBearing(sphere.center, distance, bubble, around, this.theta, tilt);
     }
 
-    const travel = this.camera.position.distanceTo(sphere.center.clone().addScaledVector(direction, fitDistance(sphere.radius, this.camera)));
+    // The way there. A stop within the directory the camera is in, or above it, is one straight move. Anywhere else,
+    // the camera first backs out to the directory holding both places on the bearing it already has, so the view zooms
+    // out the way it opened, and then swings in to the stop; in the Flat view it rises over the orbits between stops
+    // far apart. The leg's time is shared between the segments by how far each goes.
+    const legs: Omit<Segment, 'duration'>[] = [];
+    const current = new THREE.Vector3().subVectors(this.camera.position, this.controls.target).normalize();
+    if (flat) {
+      const apart = this.controls.target.distanceTo(sphere.center);
+      if (apart > FLAT_RISE * sphere.radius) {
+        legs.push({ sphere: { center: this.controls.target.clone().lerp(sphere.center, 0.5), radius: Math.max(sphere.radius, apart / 2) }, to: -1, bearing: current });
+      }
+    } else {
+      const open = world.focus.opened;
+      const between = commonAncestor(world.view.viewParent, open, to);
+      if (between !== open && between !== to) legs.push({ sphere: world.bubbleOf(between) ?? world.bounds, to: between, bearing: current });
+    }
+    legs.push({ sphere, to, bearing: direction });
+
+    const from = this.camera.position.clone();
+    const travels = legs.map((leg) => {
+      const end = leg.sphere.center.clone().addScaledVector(leg.bearing, fitDistance(leg.sphere.radius, this.camera));
+      const travel = from.distanceTo(end);
+      from.copy(end);
+      return travel;
+    });
+    const travel = travels.reduce((sum, t) => sum + t, 0);
     const share = Math.min(1, Math.log10(1 + travel / (10 * sphere.radius)));
-    const duration = this.instant ? 0 : LEG_MIN_MS + (LEG_MAX_MS - LEG_MIN_MS) * share;
-    world.focus.frame(sphere, { to, duration, bearing: direction, ease: 'inOut' });
+    const total = LEG_MIN_MS + (LEG_MAX_MS - LEG_MIN_MS) * share;
+    this.segments = legs.map((leg, i) => ({ ...leg, duration: this.instant ? 0 : Math.max(SEGMENT_MIN_MS, (total * travels[i]) / Math.max(1e-6, travel)) }));
+    this.fly(world);
+  }
+
+  /** Sets off on the leg's next segment. */
+  private fly(world: World): void {
+    const segment = this.segments.shift()!;
+    world.focus.frame(segment.sphere, { to: segment.to, duration: segment.duration, bearing: segment.bearing, ease: 'inOut' });
     this.view.wake();
   }
 
@@ -521,6 +579,14 @@ function reachOf(world: World, stats: Stats, i: number): { files: number; direct
     }
   }
   return { files, directories: directories.size };
+}
+
+/** The lowest directory holding both `a` and `b` in the view tree (`a` itself when `b` is below it). */
+function commonAncestor(viewParent: Int32Array, a: number, b: number): number {
+  const above = new Set<number>();
+  for (let at = a; at >= 0; at = viewParent[at]) above.add(at);
+  for (let at = b; at >= 0; at = viewParent[at]) if (above.has(at)) return at;
+  return a;
 }
 
 function findNode(world: World, id: string): number {
