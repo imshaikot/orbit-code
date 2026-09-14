@@ -1,7 +1,7 @@
 {
   "name": "@orbit-code/desktop",
   "productName": "Orbit Code",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Orbit Code as a desktop app: an open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike, in a window of its own.",
   "license": "MIT",
