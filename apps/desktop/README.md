@@ -80,6 +80,8 @@ Environment variables: `ORBIT_DESKTOP_FOLDER` (a folder to open), `ORBIT_REINDEX
 
 Everything the app runs is bundled into `dist/`, so `package.json` lists the workspace packages as devDependencies: electron-builder would otherwise copy them into the package.
 
+[docs/hosts.md](../../docs/hosts.md) describes what the desktop app provides next to what the VS Code extension does, and [docs/using-orbit.md](../../docs/using-orbit.md) how to use the view.
+
 ## Packaging and releasing
 
 ```sh

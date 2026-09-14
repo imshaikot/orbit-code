@@ -72,7 +72,7 @@ yarn package     # a production .vsix in dist/apps/vscode/
 
 CI (`.github/workflows/ci.yml`) runs typecheck, build, the package boundary check and an index of the repository on every push to `main` and pull request, then packages a `.vsix` and runs smoke and harness; the harness report and screenshots are an artifact to read. Releases come from Nx Release: a `v<version>` tag attaches the `.vsix` to a GitHub release, and publishes it to the Marketplace and Open VSX once their tokens are set.
 
-Architecture notes are in `CLAUDE.md`.
+The longer documentation is in the repository's `docs/` directory: how to use the view, the architecture, the graph pipeline, how Claude Code is run, contributing, releasing and troubleshooting.
 
 ## Limitations
 

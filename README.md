@@ -6,6 +6,23 @@ Your codebase as a 3D dependency graph, with Claude Code working through it live
 - **Use it as a desktop app:** [apps/desktop/README.md](apps/desktop/README.md)
 - **Index a repository from the command line:** [packages/indexer/README.md](packages/indexer/README.md)
 
+## Documentation
+
+The [docs](docs/README.md) directory holds the longer pages:
+
+| Page | For |
+| --- | --- |
+| [Using Orbit](docs/using-orbit.md) | Reading the view, navigating, prompting Claude, permissions, the file card, the Flat view and the tour |
+| [Architecture](docs/architecture.md) | The three bundles, the services, the protocol, the data flow and the security constraints |
+| [The graph pipeline](docs/graph-pipeline.md) | Indexing, language coverage, the cache, live updates and the layout |
+| [Claude in Orbit](docs/claude-session.md) | How the `claude` CLI is run: conversations, permissions, questions, MCP, skills, files, history, subagents |
+| [The webview](docs/webview.md) | The three.js scene, focus and levels, GPU picking, the frame loop, the HUD and the build's constraints |
+| [Hosts](docs/hosts.md) | What VS Code and the desktop app each provide, and how a third editor would host Orbit |
+| [The monorepo](docs/monorepo.md) | Projects, tags, the boundary check, TypeScript per runtime, Nx targets and caching |
+| [Contributing](docs/contributing.md) | The dev loop, where a change goes, the checks, CI and the commit conventions |
+| [Releasing](docs/releasing.md) | Version plans, release groups, tags and publishing |
+| [Troubleshooting](docs/troubleshooting.md) | Logs, caches and the failures with a known cause |
+
 ## Layout
 
 | Path | Package | What it is |
@@ -41,11 +58,11 @@ yarn desktop:package  # dist/apps/desktop: a dmg and zip, an NSIS installer or a
 yarn nx graph         # the project graph
 ```
 
-Nx 23 runs and caches the tasks; Yarn 4 workspaces link the packages, which import each other's sources directly.
+Nx 23 runs and caches the tasks; Yarn 4 workspaces link the packages, which import each other's sources directly. [docs/contributing.md](docs/contributing.md) has the dev loop, the checks and where a change goes; [docs/monorepo.md](docs/monorepo.md) the workspace's rules.
 
 ## Releases
 
-Record a change worth releasing with `yarn nx release plan <bump> --projects=<project>`, and commit the plan with it. `yarn nx release --skip-publish` then applies the plans: it bumps versions, writes each project's `CHANGELOG.md`, commits and tags, `v<version>` for the extension, `desktop-v<version>` for the desktop app and `<project>-v<version>` for an npm package. Pushing a tag runs `.github/workflows/release.yml`, which publishes that release.
+Record a change worth releasing with `yarn nx release plan <bump> --projects=<project>`, and commit the plan with it. `yarn nx release --skip-publish` then applies the plans: it bumps versions, writes each project's `CHANGELOG.md`, commits and tags, `v<version>` for the extension, `desktop-v<version>` for the desktop app and `<project>-v<version>` for an npm package. Pushing a tag runs `.github/workflows/release.yml`, which publishes that release. [docs/releasing.md](docs/releasing.md) has the whole procedure.
 
 ## License
 
