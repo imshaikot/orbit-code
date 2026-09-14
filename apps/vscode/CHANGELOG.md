@@ -1,3 +1,9 @@
+## 0.2.1 (2026-09-14)
+
+### 🩹 Fixes
+
+- The Marketplace listing gets the extension's icon, and a description in Orbit Code's own words: an open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike. ([df71e87](https://github.com/imshaikot/orbit-code/commit/df71e87))
+
 ## 0.2.0 (2026-09-14)
 
 ### 🚀 Features
