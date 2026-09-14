@@ -1,6 +1,6 @@
 {
   "name": "@imshaikot/orbit-code-server",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Orbit Code's local server: the Orbit host in one Node process, serving the 3D page on localhost.",
   "license": "MIT",
