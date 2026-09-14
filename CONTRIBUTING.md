@@ -1,6 +1,6 @@
 # Contributing to Orbit Code
 
-Thanks for taking the time. Orbit Code draws a workspace as a 3D dependency graph and animates a Claude Code session moving through it, as a VS Code extension and as a desktop app. Bug reports, imports your language is missing, docs fixes and code are all welcome.
+Thanks for taking the time. Orbit Code is an open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike: it draws a workspace as a 3D dependency graph and animates a Claude Code session moving through it, as a VS Code extension and as a desktop app. Bug reports, imports your language is missing, docs fixes and code are all welcome.
 
 Taking part means following the [code of conduct](CODE_OF_CONDUCT.md).
 

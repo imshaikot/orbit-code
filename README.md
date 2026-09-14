@@ -1,6 +1,6 @@
 # Orbit Code
 
-Your codebase as a 3D dependency graph, with Claude Code working through it live. This repository holds the VS Code extension, the desktop app, and the editor-agnostic packages both are built from.
+An open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike: your codebase as a dependency graph, with Claude working through it as you watch. This repository holds the VS Code extension, the desktop app, and the editor-agnostic packages both are built from.
 
 - **Use it in VS Code:** [apps/vscode/README.md](apps/vscode/README.md)
 - **Use it as a desktop app:** [apps/desktop/README.md](apps/desktop/README.md)

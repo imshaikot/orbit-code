@@ -3,7 +3,7 @@
   "productName": "Orbit Code",
   "version": "0.0.0",
   "private": true,
-  "description": "Orbit Code as a desktop app: a folder's dependency graph in 3D, with a live Claude Code session moving through it, in a window of its own.",
+  "description": "Orbit Code as a desktop app: an open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike, in a window of its own.",
   "license": "MIT",
   "author": "Orbit Code",
   "main": "dist/main.js",

@@ -1,6 +1,6 @@
 # Orbit Code documentation
 
-Orbit Code renders a workspace as a 3D force-directed dependency graph and animates a live Claude Code session moving through it. It ships as a VS Code extension and as an Electron desktop app, both built from the same engine and the same UI in this monorepo.
+Orbit Code is an open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike. It renders a workspace as a 3D force-directed dependency graph and animates a live Claude Code session moving through it, and ships as a VS Code extension and as an Electron desktop app, both built from the same engine and the same UI in this monorepo.
 
 Start with the page that matches what you want to do.
 
