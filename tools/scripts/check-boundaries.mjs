@@ -75,7 +75,8 @@ for (const project of projects) {
   const src = join(root, project.dir, 'src');
   for (const file of walk(src)) {
     const where = relative(root, file);
-    for (const [, , specifier] of readFileSync(file, 'utf8').matchAll(IMPORT)) {
+    for (const [, , fromClause, , sideEffect, , called] of readFileSync(file, 'utf8').matchAll(IMPORT)) {
+      const specifier = fromClause ?? sideEffect ?? called;
       if (specifier.includes('${')) continue; // an import written inside a template string, not one this file makes
       imports++;
       if (specifier.startsWith('.')) {
