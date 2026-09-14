@@ -3,7 +3,7 @@
   "displayName": "Orbit Code",
   "description": "Your codebase as a 3D dependency graph, with a live Claude Code session moving through it.",
   "version": "0.2.0",
-  "publisher": "local",
+  "publisher": "imshaikot",
   "private": true,
   "author": "Shahriar M Abu Hena",
   "license": "MIT",

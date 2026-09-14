@@ -41,7 +41,7 @@ exports.run = async function run() {
   const layoutFile = await waitForFile(dirname(graphFile), (name, dir) => name.startsWith('layout-') && name.endsWith('.bin') && statSync(join(dir, name)).size > 0, 90_000, 'layout file');
   log(`layout persisted after the webview round trip: ${basename(layoutFile)}, ${statSync(layoutFile).size} bytes`);
 
-  const orbitLog = await waitForFile(join(userData, 'logs'), (name, dir) => name === 'Orbit.log' && basename(dir) === 'local.orbit-code', 30_000, 'Orbit.log');
+  const orbitLog = await waitForFile(join(userData, 'logs'), (name, dir) => name === 'Orbit.log' && basename(dir) === 'imshaikot.orbit-code', 30_000, 'Orbit.log');
   const read = () => readFileSync(orbitLog, 'utf8');
   await waitFor(() => read().includes('scene ready for graph'), 30_000, 'scene ready in Orbit.log');
   await waitFor(() => /agent: |agent unavailable: /.test(read()), 30_000, 'the Claude Code probe in Orbit.log');
@@ -112,7 +112,7 @@ exports.run = async function run() {
 
   // The file menu's host side, through the API activate() returns (the webview sends the same requests): read and save
   // through VS Code's document, rename and delete through workspace edits, and the graph following each at once.
-  const api = vscode.extensions.getExtension('local.orbit-code')?.exports;
+  const api = vscode.extensions.getExtension('imshaikot.orbit-code')?.exports;
   check(typeof api?.fileRequest === 'function', 'activate() no longer returns fileRequest');
   // The deleted file must not land in the real Trash; this user-data dir is thrown away after the run.
   await vscode.workspace.getConfiguration('files').update('enableTrash', false, vscode.ConfigurationTarget.Global);
