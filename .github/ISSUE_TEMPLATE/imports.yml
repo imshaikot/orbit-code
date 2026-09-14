@@ -1,0 +1,88 @@
+name: Missing or wrong imports
+description: The graph leaves out an import, draws one that isn't there, or leaves out a file.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Orbit resolves imports only against files already in the graph, through the manifests it reads: package.json, tsconfig and jsconfig, go.mod, Cargo.toml, Python source roots, composer.json, pubspec.yaml, .csproj and Package.swift.
+
+        Run **Orbit Code: Reindex Workspace** first. Live updates are incremental, so some imports stay stale until a reindex ([the known cases](https://github.com/imshaikot/orbit-code/blob/main/docs/graph-pipeline.md)).
+
+  - type: dropdown
+    id: reindex
+    attributes:
+      label: Is it still wrong after Reindex Workspace?
+      options:
+        - Yes, it's wrong after a reindex too
+        - No, a reindex fixes it, but a live update gets it wrong
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What's wrong?
+      options:
+        - An import is missing
+        - An import points at the wrong file
+        - An import is drawn that isn't in the code
+        - A file is missing from the graph
+        - A file is in the graph that shouldn't be
+    validations:
+      required: true
+
+  - type: input
+    id: language
+    attributes:
+      label: Language or ecosystem
+      placeholder: TypeScript with tsconfig paths, a Python src layout, Go modules, …
+    validations:
+      required: true
+
+  - type: textarea
+    id: importer
+    attributes:
+      label: The importing file and the import
+      description: The file's path from the workspace root, and the import as it is written.
+      placeholder: |
+        packages/app/src/main.ts
+        import { format } from '@acme/shared/format';
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: target
+    attributes:
+      label: The file it should resolve to
+      placeholder: packages/shared/src/format.ts
+
+  - type: textarea
+    id: manifests
+    attributes:
+      label: Relevant manifests
+      description: The parts of package.json, tsconfig.json, go.mod, pyproject.toml or whichever manifest decides where this import resolves.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Orbit Code version
+      placeholder: 0.2.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: workspace
+    attributes:
+      label: About the workspace
+      description: Roughly how many files, and whether it's a monorepo. A public repository that shows the problem helps most.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues.
+          required: true

@@ -1,0 +1,27 @@
+name: Question
+description: Ask how something works, when the docs don't say.
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [docs](https://github.com/imshaikot/orbit-code/blob/main/docs/README.md) may already answer it, [Troubleshooting](https://github.com/imshaikot/orbit-code/blob/main/docs/troubleshooting.md) especially.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Orbit Code version
+      placeholder: 0.2.0
+
+  - type: input
+    id: environment
+    attributes:
+      label: Editor and operating system
+      placeholder: VS Code 1.104.0 on macOS 15.6 (arm64)

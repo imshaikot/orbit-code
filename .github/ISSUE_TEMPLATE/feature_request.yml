@@ -1,0 +1,51 @@
+name: Feature request
+description: An idea for Orbit Code.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Planning to build a larger change yourself? Open this first, so its shape is agreed before the work.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would it solve?
+      description: What you were trying to do, and what got in the way.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: What would it touch?
+      multiple: true
+      options:
+        - The graph (indexing, languages, live updates, layout)
+        - The view (navigating, the Flat view, the tour)
+        - Claude (prompts, permissions, the transcript, the spark)
+        - Skills, history or MCP
+        - The file card or the editor sheet
+        - The desktop app
+        - Another editor or host
+        - Something else
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: Anything you've tried or considered instead.
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to work on this.

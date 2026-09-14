@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/imshaikot/orbit-code/security/advisories/new
+    about: Privately, so it can be fixed before the details are public.
+  - name: A problem with Claude Code itself
+    url: https://github.com/anthropics/claude-code/issues
+    about: The claude CLI, logging in, models or its answers. Orbit runs the CLI you installed.
+  - name: Troubleshooting
+    url: https://github.com/imshaikot/orbit-code/blob/main/docs/troubleshooting.md
+    about: Where the log is, the caches, and the failures with a known cause.
