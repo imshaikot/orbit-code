@@ -3,7 +3,8 @@ import { FILE_KINDS, FILE_KIND_LABELS } from '@orbit-code/graph/languages';
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { type Sphere, fitDistance } from './focus';
-import { type World, formatBytes } from './world';
+import type { World } from './world';
+import { formatBytes } from './world/describe';
 
 // A tour of the workspace: the camera flies from one place to the next, a directory or a file picked at random (hubs
 // and large files more often than the rest, and nowhere twice until everywhere has been), each time on a fresh
