@@ -2,7 +2,7 @@
   "name": "orbit-code",
   "displayName": "Orbit Code",
   "description": "Open-source, live 3D visuals for Claude Code in VS Code: your codebase as a dependency graph, with Claude working through it as you watch.",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "publisher": "imshaikot",
   "icon": "media/icon.png",
   "private": true,

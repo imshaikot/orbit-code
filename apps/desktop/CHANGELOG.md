@@ -1,3 +1,9 @@
+## 0.2.4 (2026-09-14)
+
+### 🩹 Fixes
+
+- Orbit Code now describes itself as open-source, live 3D visuals for Claude Code, available for VS Code, as a desktop app and as a web client. The extension's Marketplace page sticks to VS Code, and links to the website for the install guide, the docs and the demo. ([6667017](https://github.com/imshaikot/orbit-code/commit/6667017))
+
 ## 0.2.3 (2026-09-14)
 
 ### 🩹 Fixes
