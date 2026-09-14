@@ -4,12 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/imshaikot/orbit-code?logo=github)](https://github.com/imshaikot/orbit-code/releases)
 [![VS Marketplace](https://vsmarketplacebadges.dev/version-short/imshaikot.orbit-code.svg)](https://marketplace.visualstudio.com/items?itemName=imshaikot.orbit-code)
 [![npm](https://img.shields.io/npm/v/@imshaikot/orbit-code-server?logo=npm&label=npm%20server)](https://www.npmjs.com/package/@imshaikot/orbit-code-server)
-[![Electron](https://img.shields.io/github/package-json/dependency-version/imshaikot/orbit-code/dev/electron?filename=apps%2Fdesktop%2Fpackage.json&logo=electron&label=Electron)](apps/desktop)
-[![three.js](https://img.shields.io/github/package-json/dependency-version/imshaikot/orbit-code/three?filename=packages%2Fwebview%2Fpackage.json&logo=threedotjs&label=three.js)](packages/webview)
-[![TypeScript](https://img.shields.io/github/package-json/dependency-version/imshaikot/orbit-code/dev/typescript?logo=typescript&label=TypeScript)](tsconfig.base.json)
 [![Nx](https://img.shields.io/github/package-json/dependency-version/imshaikot/orbit-code/dev/nx?logo=nx&label=Nx)](nx.json)
-[![Yarn](https://img.shields.io/badge/Yarn-4-2C8EBB?logo=yarn&logoColor=white)](package.json)
-[![Node](https://img.shields.io/badge/Node-22-5FA04E?logo=nodedotjs&logoColor=white)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/imshaikot/orbit-code)](LICENSE)
 [![Website](https://img.shields.io/badge/website-orbit--code.imshaikot.com-a58bff)](https://orbit-code.imshaikot.com)
 
