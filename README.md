@@ -67,7 +67,7 @@ Nx 23 runs and caches the tasks; Yarn 4 workspaces link the packages, which impo
 
 ## Releases
 
-Record a change worth releasing with `yarn nx release plan <bump> --projects=<project>`, and commit the plan with it. `yarn nx release --skip-publish` then applies the plans: it bumps versions, writes each project's `CHANGELOG.md`, commits and tags, `v<version>` for the extension, `desktop-v<version>` for the desktop app and `<project>-v<version>` for an npm package. Pushing a tag runs `.github/workflows/release.yml`, which publishes that release. [docs/releasing.md](docs/releasing.md) has the whole procedure.
+Record a change worth releasing with `yarn nx release plan <bump> --groups=apps` (the extension and the desktop app, released together) or `--projects=<package>` for an npm package, and commit the plan with it. `yarn nx release --skip-publish` then applies the plans: it bumps versions, writes each project's `CHANGELOG.md`, commits and tags, `v<version>` for the apps and `<project>-v<version>` for an npm package. Pushing a `v` tag runs `.github/workflows/release.yml`, which builds the `.vsix` and the macOS dmgs and publishes them in one GitHub release with that version's changelog. [docs/releasing.md](docs/releasing.md) has the whole procedure.
 
 ## License
 

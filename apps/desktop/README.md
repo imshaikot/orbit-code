@@ -91,7 +91,7 @@ yarn desktop:package --linux AppImage   # arguments go to electron-builder
 
 This makes a dmg and zip on macOS, an NSIS installer on Windows and an AppImage on Linux (`electron-builder.yml`). electron-builder is pinned in `scripts/builder.mjs` and fetched with `yarn dlx`. Electron is pinned in `package.json` at 44.3.0, which runs Node 24.20.0.
 
-To release, add a version plan with the change (`yarn nx release plan minor --projects=desktop -m "…"`), then run `yarn nx release --skip-publish` and push the `desktop-v<version>` tag. `.github/workflows/release.yml` builds on macOS, Windows and Linux and attaches the installers to the GitHub release.
+The desktop app is released with the VS Code extension: one version, one `v<version>` tag. To release, add a version plan with the change (`yarn nx release plan minor --groups=apps -m "…"`), then run `yarn nx release --skip-publish` and push the tag. `.github/workflows/release.yml` builds a dmg for Apple silicon and one for Intel on macOS and puts them in the GitHub release beside the extension's `.vsix`, with that version's changelog. Windows and Linux installers aren't released yet; `yarn desktop:package` makes them on those platforms. [docs/releasing.md](../../docs/releasing.md) has the whole procedure.
 
 The builds are not signed yet. macOS gets an ad hoc signature, so it runs on Apple silicon, but Gatekeeper asks before the first launch. Windows SmartScreen warns too. Signing needs, as follow-ups:
 

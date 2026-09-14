@@ -7,7 +7,7 @@ Fixes go into the next release. Older releases don't get backports.
 | Part | Supported |
 | --- | --- |
 | The VS Code extension, `imshaikot.orbit-code` (`v*` releases) | The latest release |
-| The desktop app (`desktop-v*` releases) | The latest release |
+| The desktop app (the same `v*` releases) | The latest release |
 | `@orbit-code/indexer` on npm | The latest version |
 | `main` | Yes |
 
