@@ -88,7 +88,7 @@ export function releaseNotes(tag) {
     '',
     ...assets(version).map(({ file, label }) => `- **${label}:** \`${file}\``),
     '',
-    'The extension is also on the Visual Studio Marketplace and Open VSX as `imshaikot.orbit-code`. The macOS app is not signed with a Developer ID yet, so macOS stops its first launch: open **System Settings → Privacy & Security** and choose **Open Anyway**.',
+    'The extension is also on the Visual Studio Marketplace and Open VSX as `imshaikot.orbit-code`, and [orbit-code.imshaikot.com/install](https://orbit-code.imshaikot.com/install/) has every way to install and update. The macOS app is not signed with a Developer ID yet, so macOS stops its first launch: open **System Settings → Privacy & Security** and choose **Open Anyway**.',
     '',
   );
   return { version, changelogs: found, text: out.join('\n') };
