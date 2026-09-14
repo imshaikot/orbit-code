@@ -1,0 +1,25 @@
+{
+  "name": "@orbit-code/server",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Orbit Code's local server: the Orbit host in one Node process, serving the 3D page on localhost.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imshaikot/orbit-code.git",
+    "directory": "apps/server"
+  },
+  "keywords": [
+    "claude-code",
+    "dependency-graph",
+    "orbit",
+    "visualization"
+  ],
+  "dependencies": {
+    "@orbit-code/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@orbit-code/indexer": "workspace:*",
+    "@orbit-code/webview": "workspace:*"
+  }
+}

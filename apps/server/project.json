@@ -1,0 +1,38 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "server",
+  "projectType": "application",
+  "sourceRoot": "apps/server/src",
+  "tags": ["type:app", "runtime:node", "publish:npm"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node build.mjs",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {
+        "production": {
+          "command": "node build.mjs --production"
+        }
+      },
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "watch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node build.mjs --watch",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["^watch"],
+      "continuous": true
+    },
+    "typecheck": {},
+    "nx-release-publish": {
+      "executor": "@nx/js:release-publish",
+      "options": {
+        "packageRoot": "{projectRoot}/dist"
+      }
+    }
+  }
+}

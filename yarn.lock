@@ -2253,6 +2253,16 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@orbit-code/server@workspace:apps/server":
+  version: 0.0.0-use.local
+  resolution: "@orbit-code/server@workspace:apps/server"
+  dependencies:
+    "@orbit-code/indexer": "workspace:*"
+    "@orbit-code/protocol": "workspace:*"
+    "@orbit-code/webview": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
 "@orbit-code/source@workspace:.":
   version: 0.0.0-use.local
   resolution: "@orbit-code/source@workspace:."
