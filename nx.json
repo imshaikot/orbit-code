@@ -79,7 +79,8 @@
       }
     },
     "version": {
-      "updateDependents": "never"
+      "updateDependents": "never",
+      "adjustSemverBumpsForZeroMajorVersion": false
     },
     "changelog": {
       "workspaceChangelog": false,
