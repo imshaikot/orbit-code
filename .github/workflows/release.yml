@@ -1,8 +1,11 @@
 name: Release
 
-# `yarn nx release` versions what the version plans name, writes each project's CHANGELOG.md, commits, and tags each
-# release with its group's pattern (nx.json): v<version> for the VS Code extension, desktop-v<version> for the desktop
-# app, <project>-v<version> for an npm package. Pushing a tag runs the matching job.
+# `yarn nx release` versions what the version plans name, writes each project's CHANGELOG.md, commits, and tags. The VS
+# Code extension and the desktop app are one release group (nx.json's `apps`): one version, one v<version> tag. An npm
+# package is tagged <project>-v<version>. Pushing a tag runs the matching jobs. For v<version>: check, then the .vsix and
+# the macOS dmgs are built side by side, then one GitHub release carries all of them with that version's changelog, and
+# the extension goes to the Marketplace and Open VSX when their tokens are set. Nothing is released unless every build
+# succeeded; a re-run after a failure finishes the release (tools/scripts/github-release.mjs).
 on:
   push:
     tags: ['v*', '*-v*']
@@ -16,16 +19,11 @@ env:
   ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
 jobs:
-  vscode:
-    name: Package the extension, attach it to a GitHub release, publish it
+  check:
+    name: Check the versions, the changelog and the types
     if: startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    env:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - run: corepack enable
@@ -34,35 +32,47 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
       - run: yarn install --immutable
-      - name: Check the tag matches apps/vscode/package.json
+      - name: Check the tag matches both apps' versions
         run: |
-          version=$(node -p 'require("./apps/vscode/package.json").version')
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match apps/vscode/package.json version $version"
-            exit 1
-          fi
+          for app in vscode desktop; do
+            version=$(node -p "require('./apps/$app/package.json').version")
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match apps/$app/package.json version $version"
+              exit 1
+            fi
+          done
+      # Fails when neither app's CHANGELOG.md has a section for the version, i.e. the tag wasn't cut with `nx release`.
+      - name: Write the release notes from the changelogs
+        run: |
+          node tools/scripts/release-notes.mjs "$GITHUB_REF_NAME" --out "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
       - run: yarn typecheck
+
+  vscode:
+    name: Package the extension
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - run: yarn install --immutable
       - run: yarn package
-      - name: Create the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/apps/vscode/*.vsix --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
-      # The Visual Studio Marketplace with VSCE_PAT, Open VSX (VSCodium, Cursor, Windsurf, …) with OVSX_PAT; each is skipped without its secret.
-      - name: Publish to the Marketplace and Open VSX
-        if: env.VSCE_PAT != '' || env.OVSX_PAT != ''
-        run: node apps/vscode/scripts/publish.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vsix
+          path: dist/apps/vscode/*.vsix
+          if-no-files-found: error
 
   desktop:
-    name: Build the desktop app on ${{ matrix.os }}, attach it to a GitHub release
-    if: startsWith(github.ref_name, 'desktop-v')
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    name: Build the desktop app for macOS
+    needs: check
+    runs-on: macos-latest
     timeout-minutes: 30
-    permissions:
-      contents: write
     env:
       # The one job that needs Electron itself.
       ELECTRON_SKIP_BINARY_DOWNLOAD: ''
@@ -73,27 +83,58 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
+      - name: Cache Electron and electron-builder downloads
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json', 'apps/desktop/scripts/builder.mjs') }}
       - run: yarn install --immutable
-      - name: Check the tag matches apps/desktop/package.json
-        shell: bash
-        run: |
-          version=$(node -p 'require("./apps/desktop/package.json").version')
-          if [ "$GITHUB_REF_NAME" != "desktop-v$version" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $version"
-            exit 1
-          fi
-      - run: yarn typecheck
-      # Unsigned: macOS and Windows warn before the first launch until signing is set up (apps/desktop/README.md).
-      - run: yarn desktop:package
-      - name: Attach the installers to the release
-        shell: bash
+      # A dmg for Apple silicon and one for Intel. Unsigned: an ad hoc signature, so macOS asks before the first launch
+      # (apps/desktop/README.md). The names are release-notes.mjs's assets().
+      - run: yarn desktop:package --mac dmg --arm64 --x64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dmg
+          path: dist/apps/desktop/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Create the GitHub release, publish the extension
+    needs: [vscode, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist/release
+          merge-multiple: true
+      - name: Create the release with the .vsix, the dmgs and the changelog
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node apps/desktop/scripts/publish.mjs
+        run: node tools/scripts/github-release.mjs "$GITHUB_REF_NAME" dist/release/*
+      # The Visual Studio Marketplace with VSCE_PAT, Open VSX (VSCodium, Cursor, Windsurf, …) with OVSX_PAT; each is skipped without its secret.
+      - name: Publish to the Marketplace and Open VSX
+        if: env.VSCE_PAT != '' || env.OVSX_PAT != ''
+        run: |
+          corepack enable
+          mkdir -p dist/apps/vscode
+          cp dist/release/*.vsix dist/apps/vscode/
+          node apps/vscode/scripts/publish.mjs
 
   npm:
     name: Publish an npm package
-    if: contains(github.ref_name, '-v') && !startsWith(github.ref_name, 'desktop-v')
+    if: contains(github.ref_name, '-v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

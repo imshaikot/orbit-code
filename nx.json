@@ -52,20 +52,13 @@
   "release": {
     "versionPlans": true,
     "groups": {
-      "vscode": {
+      "apps": {
         "projects": [
-          "tag:publish:vscode"
-        ],
-        "releaseTag": {
-          "pattern": "v{version}"
-        }
-      },
-      "desktop": {
-        "projects": [
+          "tag:publish:vscode",
           "tag:publish:desktop"
         ],
         "releaseTag": {
-          "pattern": "desktop-v{version}"
+          "pattern": "v{version}"
         }
       },
       "npm": {
