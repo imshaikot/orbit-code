@@ -1449,6 +1449,70 @@ try {
   await screenshot('8e-back-to-nested.png');
   report.checks.flatView = flatView;
 
+  // Take a Tour: the button at the top right flies the camera from stop to stop on its own, with the wheel, the drag, Esc
+  // and the tabs off until Stop Tour; some stops get a card beside them with what the graph knows about the place.
+  const tour = {};
+  const tourButton = () => evaluate(`(() => { const r = document.querySelector('.tour-button').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top, right: innerWidth - r.right }; })()`);
+  const tourState = () => evaluate('({ camera: __orbit.camera(), tour: __orbit.tour(), focus: __orbit.world().focus.cluster, selected: __orbit.world().selected })');
+  const flown = (a, b) => Math.hypot(a.position[0] - b.position[0], a.position[1] - b.position[1], a.position[2] - b.position[2]);
+  const tourAt = await tourButton();
+  tour.buttonTopRight = tourAt.top < 40 && tourAt.right < 60;
+  const beforeTour = await evaluate('__orbit.camera()');
+  await click(tourAt.x, tourAt.y);
+  await sleep(200);
+  tour.started = await evaluate(`__orbit.tour().active && document.querySelector('.tour-button').getAttribute('aria-pressed') === 'true' && document.querySelector('.tour-label').textContent === 'Stop Tour'`);
+  tour.tabsOff = await evaluate(`[...document.querySelectorAll('.view-tab')].every((tab) => tab.disabled)`);
+  tour.hint = await evaluate(`document.querySelector('.hint').textContent`);
+  tour.firstStop = await waitFor(evaluate, `__orbit.tour().stops >= 1 && __orbit.tour().phase === 'dwell'`, 8000);
+  const atStop = await tourState();
+  tour.cameraFlew = flown(beforeTour, atStop.camera) > 1;
+  tour.stop = atStop.tour.stop;
+  tour.fileRinged = atStop.tour.stop?.kind !== 'file' || atStop.selected >= 0;
+  await screenshot('9a-tour-stop.png');
+  // While the camera rests there, a wheel burst, a drag and Esc change nothing.
+  await mouse('mouseMoved', width / 2, height / 2);
+  for (let k = 0; k < 6; k++) {
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: width / 2, y: height / 2, deltaX: 0, deltaY: -200 });
+    await sleep(20);
+  }
+  await mouse('mousePressed', width / 2, height / 2);
+  for (let k = 1; k <= 6; k++) {
+    await mouse('mouseMoved', width / 2 + k * 30, height / 2 + k * 10);
+    await sleep(16);
+  }
+  await mouse('mouseReleased', width / 2 + 180, height / 2 + 60);
+  await key('Escape', 'Escape', 27);
+  await sleep(350);
+  const afterInput = await tourState();
+  tour.inputIgnored =
+    afterInput.tour.stops === atStop.tour.stops && afterInput.tour.phase === 'dwell'
+      ? { camera: flown(atStop.camera, afterInput.camera) < 1e-3 && Math.abs(atStop.camera.distance - afterInput.camera.distance) < 1e-3, focus: afterInput.focus === atStop.focus, stillActive: afterInput.tour.active }
+      : 'moved on before the check';
+  // Stop Tour gives the view back: the tabs, and the wheel.
+  const stopAt = await tourButton();
+  await click(stopAt.x, stopAt.y);
+  await sleep(300);
+  tour.stoppedByButton = await evaluate(`!__orbit.tour().active && document.querySelector('.tour-button').getAttribute('aria-pressed') === 'false' && document.querySelector('.tour-card').hidden && __orbit.world().selected < 0 && [...document.querySelectorAll('.view-tab')].every((tab) => !tab.disabled)`);
+  await waitFor(evaluate, '!__orbit.world().focus.animating', 5000);
+  const restDistance = (await evaluate('__orbit.camera()')).distance;
+  await mouse('mouseMoved', width / 2, height / 2);
+  for (let k = 0; k < 4; k++) {
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: width / 2, y: height / 2, deltaX: 0, deltaY: -200 });
+    await sleep(20);
+  }
+  await sleep(700);
+  tour.wheelBackAfter = Math.abs((await evaluate('__orbit.camera()')).distance - restDistance) > 0.01;
+  // Every stop given a card: it comes up beside the stop with the graph's facts about it, and goes when the tour ends.
+  await evaluate('__orbit.startTour({ seed: 11, cards: 1 })');
+  tour.cardShown = await waitFor(evaluate, `__orbit.tour().card && !document.querySelector('.tour-card').hidden && document.querySelector('.tour-card').dataset.offscreen === 'false'`, 15000);
+  tour.card = await evaluate(`(() => { const card = document.querySelector('.tour-card'); return { kind: card.dataset.kind, kicker: card.querySelector('.tc-kicker').textContent, title: card.querySelector('.tc-title').textContent, facts: [...card.querySelectorAll('.tc-fact')].map((fact) => fact.textContent) }; })()`);
+  await screenshot('9b-tour-card.png');
+  await evaluate('__orbit.endTour()');
+  await sleep(400);
+  tour.endedByApi = await evaluate(`!__orbit.tour().active && document.querySelector('.tour-card').hidden && __orbit.world().selected < 0`);
+  await waitFor(evaluate, '!__orbit.world().focus.animating', 5000);
+  report.checks.tour = tour;
+
   // Hidden panel: the rAF loop must stop entirely.
   await evaluate('__host.setVisible(false)');
   await sleep(400);
