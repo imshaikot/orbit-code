@@ -12,11 +12,12 @@
 
 <p align="center"><a href="docs/media/orbit-code-demo.mp4">Watch the full demo (1:44)</a></p>
 
-An open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike: your codebase as a dependency graph, with Claude working through it as you watch. This repository holds the VS Code extension, the desktop app, and the editor-agnostic packages both are built from.
+An open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike: your codebase as a dependency graph, with Claude working through it as you watch. This repository holds the VS Code extension, the desktop app, the local server with its web client, and the editor-agnostic packages they are built from.
 
 - **Install it, read the docs and the changelog:** [orbit-code.imshaikot.com](https://orbit-code.imshaikot.com)
 - **Use it in VS Code:** [apps/vscode/README.md](apps/vscode/README.md)
 - **Use it as a desktop app:** [apps/desktop/README.md](apps/desktop/README.md)
+- **Use it in your browser:** [apps/server/README.md](apps/server/README.md), the server that the [web client](https://orbit-code.imshaikot.com/web-client/) connects to
 - **Index a repository from the command line:** [packages/indexer/README.md](packages/indexer/README.md)
 
 ## Install
@@ -52,7 +53,8 @@ The [docs](docs/README.md) directory holds the longer pages, which are also publ
 | --- | --- | --- |
 | `apps/vscode` | `orbit-code` | The VS Code extension, packaged as a `.vsix` for the Marketplace and Open VSX |
 | `apps/desktop` | `@orbit-code/desktop` | The desktop app: Electron, with installers for macOS, Windows and Linux |
-| `apps/server` | `@imshaikot/orbit-code-server` | The local server, for a browser or an editor without a web view; published to npm (early: it reports its version only) |
+| `apps/server` | `@imshaikot/orbit-code-server` | The local server: Orbit for one folder, reached by the web client over a WebSocket on 127.0.0.1; published to npm |
+| `packages/web-client` | `@orbit-code/web-client` | The page at orbit-code.imshaikot.com/web-client/ that guides starting the server and connects to it |
 | `packages/protocol` | `@orbit-code/protocol` | The messages between a host, the webview and the workers |
 | `packages/graph` | `@orbit-code/graph` | File kinds, the columnar graph, the directory tree, layout extension |
 | `packages/common` | `@orbit-code/common` | Events, disposables, logging and batching, for any host |
@@ -62,7 +64,7 @@ The [docs](docs/README.md) directory holds the longer pages, which are also publ
 | `packages/webview` | `@orbit-code/webview` | The UI: the three.js scene and the HUD |
 | `tools/harness` | `@orbit-code/harness` | Headless Chrome checks of the webview against a simulated host |
 
-Each project is tagged with the runtime its code needs (neutral, node, browser, vscode or electron), and `yarn boundaries` keeps every import within those lines. Only `apps/vscode` touches the VS Code API and only `apps/desktop` touches Electron's, so both hosts share the engine, the controller, the protocol and the webview.
+Each project is tagged with the runtime its code needs (neutral, node, browser, vscode or electron), and `yarn boundaries` keeps every import within those lines. Only `apps/vscode` touches the VS Code API and only `apps/desktop` touches Electron's, so all three hosts share the engine, the controller, the protocol and the webview.
 
 ## Development
 
@@ -79,6 +81,8 @@ yarn package          # dist/apps/vscode/orbit-code-<version>.vsix
 yarn desktop --folder .   # build and open this repository in the desktop app
 yarn desktop:smoke    # end-to-end in the desktop app
 yarn desktop:package  # dist/apps/desktop: a dmg and zip, an NSIS installer or an AppImage
+yarn server .         # build and serve this repository to the web client
+yarn server:smoke     # the server and the web client end to end in headless Chrome
 yarn nx graph         # the project graph
 ```
 
