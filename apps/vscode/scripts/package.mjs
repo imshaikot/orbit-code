@@ -20,9 +20,9 @@ if (existsSync(join(app, 'dist', 'extension.js.map'))) {
 }
 mkdirSync(dirname(out), { recursive: true });
 
-// package.json has no vscode:prepublish, so vsce packages whatever dist/ holds. With no repository URL,
-// vsce can't rewrite README's relative links and refuses to package unless told to leave them.
-const result = spawnSync('yarn', ['dlx', '--quiet', VSCE, 'package', '--no-dependencies', '--allow-missing-repository', '--no-rewrite-relative-links', '--out', out], {
+// package.json has no vscode:prepublish, so vsce packages whatever dist/ holds. README's relative links are left
+// as written: vsce would rewrite them against the repository's root, not apps/vscode.
+const result = spawnSync('yarn', ['dlx', '--quiet', VSCE, 'package', '--no-dependencies', '--no-rewrite-relative-links', '--out', out], {
   cwd: app,
   stdio: 'inherit',
 });

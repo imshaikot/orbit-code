@@ -7,6 +7,15 @@
   "private": true,
   "author": "Shahriar M Abu Hena",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imshaikot/orbit-code.git",
+    "directory": "apps/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/imshaikot/orbit-code/issues"
+  },
+  "homepage": "https://github.com/imshaikot/orbit-code#readme",
   "engines": {
     "vscode": "^1.100.0"
   },
