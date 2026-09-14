@@ -21,7 +21,9 @@
     "smoke": "nx run vscode:smoke",
     "desktop": "nx run desktop:start --",
     "desktop:package": "nx run desktop:package --",
-    "desktop:smoke": "nx run desktop:smoke"
+    "desktop:smoke": "nx run desktop:smoke",
+    "server": "nx run server:start --",
+    "server:smoke": "nx run server:smoke --"
   },
   "devDependencies": {
     "@nx/js": "23.2.1",

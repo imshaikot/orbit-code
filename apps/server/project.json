@@ -28,6 +28,23 @@
       "continuous": true
     },
     "typecheck": {},
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node apps/server/dist/server.mjs"
+      },
+      "dependsOn": ["build"],
+      "cache": false
+    },
+    "smoke": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node test/smoke.mjs",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["build"],
+      "cache": false
+    },
     "nx-release-publish": {
       "executor": "@nx/js:release-publish",
       "options": {

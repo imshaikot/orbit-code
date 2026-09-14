@@ -2,9 +2,9 @@
   "name": "@imshaikot/orbit-code-server",
   "version": "0.1.3",
   "private": true,
-  "description": "Orbit Code's local server: the Orbit host in one Node process, serving the 3D page on localhost.",
+  "description": "Orbit Code in your browser: the Orbit host for one folder in a Node process on 127.0.0.1, which the web client at orbit-code.imshaikot.com/web-client/ connects to.",
   "license": "MIT",
-  "homepage": "https://orbit-code.imshaikot.com",
+  "homepage": "https://orbit-code.imshaikot.com/web-client/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/imshaikot/orbit-code.git",
@@ -17,10 +17,16 @@
     "visualization"
   ],
   "dependencies": {
-    "@orbit-code/protocol": "workspace:*"
+    "@orbit-code/agent": "workspace:*",
+    "@orbit-code/common": "workspace:*",
+    "@orbit-code/core": "workspace:*",
+    "@orbit-code/indexer": "workspace:*",
+    "@orbit-code/protocol": "workspace:*",
+    "ws": "8.21.3"
   },
   "devDependencies": {
-    "@orbit-code/indexer": "workspace:*",
-    "@orbit-code/webview": "workspace:*"
+    "@orbit-code/web-client": "workspace:*",
+    "@orbit-code/webview": "workspace:*",
+    "@types/ws": "8.18.1"
   }
 }

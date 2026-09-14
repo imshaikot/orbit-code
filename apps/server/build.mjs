@@ -1,9 +1,11 @@
 // Builds @imshaikot/orbit-code-server into dist/, which is also the package npm gets (nx.json release, group npm):
 //   dist/server.mjs     esm, the orbit-server CLI: src/ with the workspace packages it imports inlined
 //   dist/indexer.mjs    copied from @orbit-code/indexer, run on a worker thread
-//   dist/webview.js     copied from @orbit-code/webview (with its source map in a dev build), the page the server serves
+//   dist/webview.js     copied from @orbit-code/webview (with its source map in a dev build), the workspace's UI
+//   dist/web-client.js  copied from @orbit-code/web-client with its web-client.json: the page the website hosts at
+//                       /web-client/, which it takes from this package on npm
 //   dist/package.json   the published manifest, with README.md, LICENSE and CHANGELOG.md beside it
-// Nx builds those two packages first, with the same configuration (dependsOn ^build).
+// Nx builds those packages first, with the same configuration (dependsOn ^build).
 //
 //   node build.mjs [--watch] [--production]
 
@@ -33,6 +35,8 @@ const options = {
   target: 'node20',
   sourcemap: production ? false : 'linked',
   define: { ORBIT_SERVER_VERSION: JSON.stringify(source.version) },
+  // ws loads these native speed-ups when installed and does without them otherwise.
+  external: ['bufferutil', 'utf-8-validate'],
   // The hashbang makes it an npm bin; CommonJS dependencies bundled into ESM call require() on node builtins.
   banner: {
     js: ['#!/usr/bin/env node', "import { createRequire as __orbitCreateRequire } from 'node:module';", 'const require = __orbitCreateRequire(import.meta.url);'].join('\n'),
@@ -40,7 +44,17 @@ const options = {
 };
 
 const packageDir = (name) => dirname(require.resolve(`${name}/package.json`));
-const artifacts = [join(packageDir('@orbit-code/indexer'), 'dist', 'indexer.mjs'), join(packageDir('@orbit-code/webview'), 'dist', 'webview.js')];
+const webClient = join(packageDir('@orbit-code/web-client'), 'dist');
+const artifacts = [
+  join(packageDir('@orbit-code/indexer'), 'dist', 'indexer.mjs'),
+  join(packageDir('@orbit-code/webview'), 'dist', 'webview.js'),
+  join(webClient, 'web-client.js'),
+  join(webClient, 'web-client.json'),
+];
+
+// The web client tells people to run this package by name (SERVER_PACKAGE), so the two must not drift.
+const wire = readFileSync(join(root, '..', '..', 'packages', 'protocol', 'src', 'wire.ts'), 'utf8');
+if (!wire.includes(`SERVER_PACKAGE = '${source.name}'`)) throw new Error(`packages/protocol/src/wire.ts: SERVER_PACKAGE must be '${source.name}', this package's name`);
 
 /** Copies the other packages' builds into dist/. A dev build brings webview.js.map too, its sources rebased onto dist/. */
 function copyArtifacts({ required }) {
@@ -57,7 +71,7 @@ function copyArtifacts({ required }) {
     sourceMap.sources = sourceMap.sources.map((path) => relative(dist, resolve(dirname(map), path)));
     writeFileSync(join(dist, basename(map)), JSON.stringify(sourceMap));
   }
-  if (production) for (const map of ['server.mjs.map', 'webview.js.map']) rmSync(join(dist, map), { force: true });
+  if (production) for (const map of ['server.mjs.map', 'webview.js.map', 'web-client.js.map']) rmSync(join(dist, map), { force: true });
 }
 
 /**
@@ -74,7 +88,7 @@ function writePublishManifest() {
     repository: source.repository,
     keywords: source.keywords,
     bin: { 'orbit-server': 'server.mjs' },
-    files: ['server.mjs', 'indexer.mjs', 'webview.js'],
+    files: ['server.mjs', 'indexer.mjs', 'webview.js', 'web-client.js', 'web-client.json'],
     engines: { node: '>=20' },
     publishConfig: { access: 'public' },
   };
