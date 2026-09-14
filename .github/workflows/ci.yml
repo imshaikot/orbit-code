@@ -135,6 +135,8 @@ jobs:
           restore-keys: nx-${{ runner.os }}-
       # The harness only throws if the scene never loads; read report.json in the artifact for the checks.
       - run: yarn harness --chrome "$(command -v google-chrome)"
+      # The server and the web client: refused sockets, the page under its CSP, a live update, a reload and a takeover.
+      - run: yarn server:smoke --chrome "$(command -v google-chrome)"
       - name: Upload report and screenshots
         if: always()
         uses: actions/upload-artifact@v7
