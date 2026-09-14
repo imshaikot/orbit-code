@@ -1,6 +1,6 @@
 # Orbit Code desktop
 
-Orbit Code as a desktop app: an open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike, in a window of its own. It shows a folder as a 3D dependency graph and animates a live Claude Code session moving through it, the same way the VS Code extension does. It runs the engine the extension runs (`@orbit-code/core`, `@orbit-code/agent`) and the same UI bundle (`@orbit-code/webview`), hosted by Electron instead of VS Code.
+Orbit Code as a desktop app: open-source, live 3D visuals for Claude Code, in a window of its own. It shows a folder as a 3D dependency graph and animates a live Claude Code session moving through it, the same way the VS Code extension and the web client do. It runs the engine the extension runs (`@orbit-code/core`, `@orbit-code/agent`) and the same UI bundle (`@orbit-code/webview`), hosted by Electron instead of VS Code.
 
 The [install guide](https://orbit-code.imshaikot.com/install/#desktop) on [orbit-code.imshaikot.com](https://orbit-code.imshaikot.com) links the downloads a release carries, and how to run the app from source when there are none.
 

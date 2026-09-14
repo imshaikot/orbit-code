@@ -12,7 +12,7 @@
 
 <p align="center"><a href="docs/media/orbit-code-demo.mp4">Watch the full demo (1:44)</a></p>
 
-An open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike: your codebase as a dependency graph, with Claude working through it as you watch. This repository holds the VS Code extension, the desktop app, the local server with its web client, and the editor-agnostic packages they are built from.
+Open-source, live 3D visuals for Claude Code, available for VS Code, as a desktop app and as a web client: your codebase as a dependency graph, with Claude working through it as you watch. This repository holds the VS Code extension, the desktop app, the local server with its web client, and the editor-agnostic packages they are built from.
 
 - **Install it, read the docs and the changelog:** [orbit-code.imshaikot.com](https://orbit-code.imshaikot.com)
 - **Use it in VS Code:** [apps/vscode/README.md](apps/vscode/README.md)
