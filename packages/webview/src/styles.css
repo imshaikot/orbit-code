@@ -217,10 +217,16 @@ textarea {
 
 .hint {
   position: absolute;
-  top: 20px;
+  top: 52px;
   right: 20px;
+  max-width: min(60ch, 40vw);
+  text-align: right;
   color: var(--ink-faint);
   font-size: 12px;
+}
+
+.hud[data-tour='true'] .hint {
+  color: var(--claude);
 }
 
 /* ── View tabs: Nested or Flat, top middle ──────────────────── */
@@ -315,6 +321,12 @@ textarea {
   --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8'%3E%3Ccircle cx='12' cy='12' r='2.6' fill='%23000' stroke='none'/%3E%3Cellipse cx='12' cy='12' rx='10' ry='4.4' transform='rotate(-16 12 12)'/%3E%3Ccircle cx='21.6' cy='9.25' r='1.9' fill='%23000' stroke='none'/%3E%3C/svg%3E");
 }
 
+.view-tab:disabled {
+  color: var(--ink-faint);
+  opacity: 0.55;
+  cursor: default;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .view-tablist[data-ready] .view-thumb,
   .view-tab,
@@ -323,9 +335,168 @@ textarea {
   }
 }
 
+/* ── Tour: the button at the top right, and the card beside each stop ──────── */
+
+.tour-button {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px 6px 11px;
+  pointer-events: auto;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-shadow: none;
+  background: rgba(9, 13, 32, 0.8);
+  border: 1px solid var(--glass-rim);
+  border-radius: 999px;
+  box-shadow:
+    0 12px 30px rgba(3, 6, 16, 0.5),
+    inset 0 1px 0 rgba(214, 205, 255, 0.08);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+  /* A route: two places with the way between them. */
+  --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='5.5' cy='17.5' r='2.6'/%3E%3Ccircle cx='18.5' cy='6.5' r='2.6'/%3E%3Cpath d='M8 16.5c4-1 3-6 6.5-7.5' stroke-dasharray='2.4 2.4'/%3E%3C/svg%3E");
+}
+
+.tour-button:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.tour-button[aria-pressed='true'] {
+  color: var(--ink);
+  background: rgba(187, 168, 255, 0.16);
+  border-color: rgba(187, 168, 255, 0.5);
+}
+
+.tour-glyph {
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  -webkit-mask: var(--glyph) center / contain no-repeat;
+  mask: var(--glyph) center / contain no-repeat;
+}
+
+.tour-button[aria-pressed='true'] .tour-glyph {
+  background: var(--claude);
+  animation: tour-live 1.6s ease-in-out infinite;
+}
+
+@keyframes tour-live {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.tour-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 7;
+  width: min(300px, calc(100vw - 16px));
+  transition: opacity 140ms ease;
+}
+
+.tour-card[data-offscreen='true'] {
+  opacity: 0;
+}
+
+.tc-body {
+  padding: 11px 13px 12px;
+  text-shadow: none;
+  background: var(--glass);
+  border: 1px solid var(--glass-rim);
+  border-radius: 14px;
+  box-shadow:
+    0 18px 44px rgba(3, 6, 16, 0.62),
+    inset 0 1px 0 rgba(214, 205, 255, 0.12);
+  backdrop-filter: blur(14px);
+}
+
+.tc-kicker {
+  font-size: 11px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tc-title {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.tour-card[data-kind='file'] .tc-title {
+  font-family: var(--code);
+  font-weight: 500;
+}
+
+.tc-facts {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.tc-fact {
+  position: relative;
+  padding-left: 14px;
+}
+
+.tc-fact::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--claude);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-button,
+  .tour-card {
+    transition: none;
+  }
+
+  .tour-button[aria-pressed='true'] .tour-glyph {
+    animation: none;
+  }
+}
+
 @media (max-width: 760px) {
   .hint {
     display: none;
+  }
+
+  .tour-label {
+    display: none;
+  }
+
+  .tour-button {
+    padding: 6px 9px;
   }
 }
 

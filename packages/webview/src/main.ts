@@ -18,6 +18,8 @@ import { SessionPanel } from './hud/sessionPanel';
 import { SparkPopup } from './hud/sparkPopup';
 import { StatusOverlay } from './hud/status';
 import { Tooltip } from './hud/tooltip';
+import { TourButton } from './hud/tourButton';
+import { TourCard } from './hud/tourCard';
 import { type ViewMode, ViewTabs } from './hud/viewTabs';
 import { Interaction } from './interaction';
 import { Labels } from './labels';
@@ -26,6 +28,7 @@ import { Picker } from './picking';
 import { SceneController } from './scene';
 import { Stage } from './stage';
 import css from './styles.css';
+import { Tour, type TourOptions } from './tour';
 import type { World } from './world';
 import { SmoothZoom } from './zoom';
 
@@ -51,9 +54,11 @@ const HINTS: Record<ViewMode, string> = {
   nested: 'Click a bubble to look inside a directory, or a file for what to do with it. Esc goes back up.',
   flat: 'Every file on its orbit. Click one for what to do with it, drag to orbit, scroll to zoom.',
 };
+const TOUR_HINT = 'On tour: the camera flies from place to place on its own. Navigation is off until Stop Tour.';
 const hint = el('p', 'hint', HINTS.nested);
 hud.append(hint);
 const viewTabs = new ViewTabs(hud, { select: (mode) => showView(mode, true) });
+const tourButton = new TourButton(hud, () => (tour.active ? endTour() : beginTour()));
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const files = new FileRequests(host);
 /** Until the host says otherwise (`host`), it is one with editor tabs, as VS Code is. */
@@ -165,6 +170,7 @@ const scene = new SceneController(stage, host, {
   hideStatus: () => status.hide(),
   graphChanged: (summary) => identity.setGraph(summary),
   worldCleared: () => {
+    endTour();
     labels.clear();
     tooltip.hide();
     fileMenu.close();
@@ -182,6 +188,7 @@ const scene = new SceneController(stage, host, {
     tooltip.hide();
     identity.setLocation(world.location());
     interaction.worldReplaced();
+    tour.rebase(world);
     // World.adopt carried the menu's file over to its new index; a file that is gone takes the menu with it.
     if (fileMenu.isOpen && !fileMenu.busy && world.selected < 0) fileMenu.close();
     debug.updates++;
@@ -216,8 +223,19 @@ const zoom = new SmoothZoom(stage.renderer.domElement, stage.camera, stage.contr
     if (!world || world.mode !== 'flat' || node === undefined) return undefined;
     return { distance: stage.camera.position.distanceTo(world.positionOf(node)), closest: world.radiusOf(node) * 5 };
   },
-  allowed: () => scene.world !== undefined && !scene.world.focus.animating,
+  allowed: () => scene.world !== undefined && !scene.world.focus.animating && !tour.active,
   wake: loop.wake,
+});
+
+// The tour: the camera flies from stop to stop on its own, some stops with a card beside them, until Stop Tour.
+const tourCard = new TourCard(hud);
+const tour = new Tour(stage.camera, stage.controls, {
+  showCard: (card, stop) => {
+    tourCard.show(card, stop.kind);
+    if (scene.world) placeTourCard(scene.world);
+  },
+  hideCard: () => tourCard.hide(),
+  wake: () => loop.wake(),
 });
 
 stage.controls.addEventListener('change', relabel);
@@ -229,6 +247,9 @@ if (host.kept('view') === 'flat') showView('flat', false);
   debug,
   world: () => scene.world,
   view: () => viewTabs.mode,
+  tour: () => tour.state(),
+  startTour: (options?: TourOptions) => beginTour(options),
+  endTour: () => endTour(),
   constellation: () => session.constellationState,
   editor: () => editor.debugState(),
   fileMenu: () => ({ open: fileMenu.isOpen, path: fileMenu.path, busy: fileMenu.busy }),
@@ -292,6 +313,8 @@ function frame({ now, dt, resumed }: FrameSample): Pace {
   // The eye follows the camera: a move in progress, a drag or a wheel, and what the pointer is over; and files flying between views.
   let smooth = world.focus.animating || world.morphing;
   let keepGoing = world.update(dt, now) || constellationOpen;
+  // A tour sets off, arrives and moves on between frames; its rests keep the loop at the ambient pace.
+  if (tour.update(now)) keepGoing = true;
   // Zooming opens and leaves directories by itself; the path follows, and what is under the pointer changes.
   if (world.focus.consumeChanged()) {
     identity.setLocation(world.location());
@@ -323,6 +346,7 @@ function frame({ now, dt, resumed }: FrameSample): Pace {
   const { calls, triangles } = stage.renderer.info.render; // read before the pick pass resets it
   if (fileMenu.isOpen) placeFileMenu(world);
   if (sparkPopup.isOpen) placeSparkPopup(world);
+  if (tourCard.isOpen) placeTourCard(world);
   if (world.consumeLabelsDirty() || labelsDirty) {
     labels.render(world.labelSpecs(), stage.camera, stage.width, stage.height);
     labelsDirty = false;
@@ -404,6 +428,71 @@ function placeFileMenu(world: World): void {
   const x = (menuAnchor.x * 0.5 + 0.5) * stage.width;
   const y = (-menuAnchor.y * 0.5 + 0.5) * stage.height;
   fileMenu.place(x, y, menuAnchor.z > -1 && menuAnchor.z < 1 && x >= 0 && y >= 0 && x <= stage.width && y <= stage.height);
+}
+
+/* ── Tour: the camera on its own from stop to stop, with the graph's input off until Stop Tour ──────── */
+
+/** Starts the tour from wherever the camera is, and takes the drag, wheel, clicks, Esc, breadcrumb and tabs away until it ends. */
+function beginTour(options?: TourOptions): boolean {
+  const world = scene.world;
+  if (!world || tour.active) return false;
+  if (!fileMenu.busy) fileMenu.close();
+  sparkPopup.close();
+  tooltip.hide();
+  disengageFollow(world);
+  zoom.cancel();
+  interaction.setLocked(true);
+  viewTabs.setEnabled(false);
+  world.focus.hold(true);
+  tourButton.set(true);
+  hud.dataset.tour = 'true';
+  hint.textContent = TOUR_HINT;
+  tour.start(world, options);
+  loop.wake();
+  return true;
+}
+
+/** Ends the tour where the camera is and gives the view back. */
+function endTour(): void {
+  if (!tour.active) return;
+  tour.end();
+  scene.world?.focus.hold(false);
+  interaction.setLocked(false);
+  viewTabs.setEnabled(true);
+  tourButton.set(false);
+  delete hud.dataset.tour;
+  hint.textContent = HINTS[viewTabs.mode];
+  relabel();
+}
+
+const tourAnchor = new THREE.Vector3();
+const tourRim = new THREE.Vector3();
+/** A file's selection ring settles at 1.5 times its radius (nodes.ts), its glow a little beyond. */
+const RING_RADII = 1.9;
+
+/** Keeps the card beside the stop: clear of a file's ring, or at the upper right of a directory's bubble as the camera sees it. */
+function placeTourCard(world: World): void {
+  const stop = tour.current;
+  if (!stop) return;
+  let clear = 0;
+  if (stop.kind === 'file') {
+    tourAnchor.copy(world.positionOf(stop.index));
+    const m = stage.camera.matrixWorld.elements;
+    tourRim.set(m[0], m[1], m[2]).multiplyScalar(world.radiusOf(stop.index) * RING_RADII).add(tourAnchor).project(stage.camera);
+    clear = Math.abs((tourRim.x * 0.5 + 0.5) * stage.width - (tourAnchor.clone().project(stage.camera).x * 0.5 + 0.5) * stage.width) + 10;
+  } else {
+    const bubble = world.bubbleOf(stop.index);
+    if (!bubble) {
+      tourCard.place(0, 0, false);
+      return;
+    }
+    const m = stage.camera.matrixWorld.elements;
+    tourAnchor.set(m[0] + m[4], m[1] + m[5], m[2] + m[6]).multiplyScalar(bubble.radius * 0.5).add(bubble.center);
+  }
+  tourAnchor.project(stage.camera);
+  const x = (tourAnchor.x * 0.5 + 0.5) * stage.width;
+  const y = (-tourAnchor.y * 0.5 + 0.5) * stage.height;
+  tourCard.place(x, y, tourAnchor.z > -1 && tourAnchor.z < 1 && x >= 0 && y >= 0 && x <= stage.width && y <= stage.height, clear);
 }
 
 /** A click on one of Claude's stars: the popup opens beside it, offering to follow it or (already following) to stop, and for a subagent's star showing its output. */
