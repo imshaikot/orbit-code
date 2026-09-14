@@ -1,10 +1,10 @@
 # Orbit Code
 
-An open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike: your codebase as a dependency graph in VS Code, with Claude working through it as you watch.
+Open-source, live 3D visuals for Claude Code in VS Code: your codebase as a dependency graph, with Claude working through it as you watch.
 
-[![Claude Code refactoring a file in Orbit Code: its star moves through the 3D dependency graph, the view turns Flat, and a permission card asks to allow a command](https://raw.githubusercontent.com/imshaikot/orbit-code/main/docs/media/orbit-code-demo.webp)](https://github.com/imshaikot/orbit-code/blob/main/docs/media/orbit-code-demo.mp4)
+[![Claude Code refactoring a file in Orbit Code: its star moves through the 3D dependency graph, the view turns Flat, and a permission card asks to allow a command](https://raw.githubusercontent.com/imshaikot/orbit-code/main/docs/media/orbit-code-demo.webp)](https://orbit-code.imshaikot.com/#demo-title)
 
-Directories are bubbles, files are spheres, imports are lines. Files Claude reads light up cyan, files it edits pulse amber, and the import network fires while it thinks. [Watch the full demo (1:44).](https://github.com/imshaikot/orbit-code/blob/main/docs/media/orbit-code-demo.mp4)
+Directories are bubbles, files are spheres, imports are lines. Files Claude reads light up cyan, files it edits pulse amber, and the import network fires while it thinks. [Watch the full demo (1:44).](https://orbit-code.imshaikot.com/#demo-title)
 
 **Website:** [orbit-code.imshaikot.com](https://orbit-code.imshaikot.com), with the [install guide](https://orbit-code.imshaikot.com/install/), the [docs](https://orbit-code.imshaikot.com/docs/) and the [changelog](https://orbit-code.imshaikot.com/changelog/).
 
@@ -65,7 +65,7 @@ curl -fsSL https://orbit-code.imshaikot.com/install.sh | sh   # macOS and Linux
 irm https://orbit-code.imshaikot.com/install.ps1 | iex        # Windows PowerShell
 ```
 
-The [install guide](https://orbit-code.imshaikot.com/install/) has every option, including the desktop app and a build from source.
+The [install guide](https://orbit-code.imshaikot.com/install/) has every option, and how each one updates.
 
 Reload VS Code, then click the Orbit icon in the activity bar or run **Orbit Code: Open**. The view opens in your source directory (`src`, `lib`, `app`, `packages`, …) when there is one.
 
