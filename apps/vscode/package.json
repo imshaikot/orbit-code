@@ -1,9 +1,10 @@
 {
   "name": "orbit-code",
   "displayName": "Orbit Code",
-  "description": "Your codebase as a 3D dependency graph, with a live Claude Code session moving through it.",
+  "description": "An open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike.",
   "version": "0.2.0",
   "publisher": "imshaikot",
+  "icon": "media/icon.png",
   "private": true,
   "author": "Shahriar M Abu Hena",
   "license": "MIT",

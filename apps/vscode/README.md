@@ -1,6 +1,6 @@
 # Orbit Code
 
-Your codebase as a 3D dependency graph in VS Code, with Claude Code working through it live.
+An open-source, live 3D visual alternative to Claude Code in the terminal, for programmers and vibe coders alike: your codebase as a dependency graph in VS Code, with Claude working through it as you watch.
 
 Directories are bubbles, files are nodes, imports are lines. Files Claude reads light up cyan, files it edits pulse amber, and the import network fires while it thinks.
 
