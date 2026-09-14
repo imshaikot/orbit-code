@@ -1792,6 +1792,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@imshaikot/orbit-code-server@workspace:apps/server":
+  version: 0.0.0-use.local
+  resolution: "@imshaikot/orbit-code-server@workspace:apps/server"
+  dependencies:
+    "@orbit-code/indexer": "workspace:*"
+    "@orbit-code/protocol": "workspace:*"
+    "@orbit-code/webview": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
 "@jest/diff-sequences@npm:30.0.1":
   version: 30.0.1
   resolution: "@jest/diff-sequences@npm:30.0.1"
@@ -2250,16 +2260,6 @@ __metadata:
 "@orbit-code/protocol@workspace:*, @orbit-code/protocol@workspace:packages/protocol":
   version: 0.0.0-use.local
   resolution: "@orbit-code/protocol@workspace:packages/protocol"
-  languageName: unknown
-  linkType: soft
-
-"@orbit-code/server@workspace:apps/server":
-  version: 0.0.0-use.local
-  resolution: "@orbit-code/server@workspace:apps/server"
-  dependencies:
-    "@orbit-code/indexer": "workspace:*"
-    "@orbit-code/protocol": "workspace:*"
-    "@orbit-code/webview": "workspace:*"
   languageName: unknown
   linkType: soft
 

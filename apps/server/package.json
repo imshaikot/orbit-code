@@ -1,5 +1,5 @@
 {
-  "name": "@orbit-code/server",
+  "name": "@imshaikot/orbit-code-server",
   "version": "0.1.2",
   "private": true,
   "description": "Orbit Code's local server: the Orbit host in one Node process, serving the 3D page on localhost.",

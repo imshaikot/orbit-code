@@ -33,7 +33,7 @@ The [docs](docs/README.md) directory holds the longer pages:
 | --- | --- | --- |
 | `apps/vscode` | `orbit-code` | The VS Code extension, packaged as a `.vsix` for the Marketplace and Open VSX |
 | `apps/desktop` | `@orbit-code/desktop` | The desktop app: Electron, with installers for macOS, Windows and Linux |
-| `apps/server` | `@orbit-code/server` | The local server, for a browser or an editor without a web view; published to npm (early: it reports its version only) |
+| `apps/server` | `@imshaikot/orbit-code-server` | The local server, for a browser or an editor without a web view; published to npm (early: it reports its version only) |
 | `packages/protocol` | `@orbit-code/protocol` | The messages between a host, the webview and the workers |
 | `packages/graph` | `@orbit-code/graph` | File kinds, the columnar graph, the directory tree, layout extension |
 | `packages/common` | `@orbit-code/common` | Events, disposables, logging and batching, for any host |

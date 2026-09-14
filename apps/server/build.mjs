@@ -1,4 +1,4 @@
-// Builds @orbit-code/server into dist/, which is also the package npm gets (nx.json release, group npm):
+// Builds @imshaikot/orbit-code-server into dist/, which is also the package npm gets (nx.json release, group npm):
 //   dist/server.mjs     esm, the orbit-server CLI: src/ with the workspace packages it imports inlined
 //   dist/indexer.mjs    copied from @orbit-code/indexer, run on a worker thread
 //   dist/webview.js     copied from @orbit-code/webview (with its source map in a dev build), the page the server serves

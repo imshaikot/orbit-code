@@ -59,7 +59,7 @@ A dependent is never bumped for a dependency's release (`updateDependents: never
 
 ## The server's first release
 
-`@orbit-code/server` (`apps/server`) is released on its own, starting at 0.1.3. Its manifest holds 0.1.2, a version never published, and Nx reads the current version from the manifest, so the first plan is a patch:
+`@imshaikot/orbit-code-server` (`apps/server`) is released on its own, starting at 0.1.3, under the maintainer's npm account rather than an organization. Its manifest holds 0.1.2, a version never published, and Nx reads the current version from the manifest, so the first plan is a patch:
 
 ```sh
 yarn nx release plan patch --projects=server -m "…"
@@ -94,5 +94,5 @@ node apps/vscode/scripts/publish.mjs --dry-run
 
 - Set the extension's `publisher` in `apps/vscode/package.json` to your Marketplace publisher, and create an Open VSX namespace of the same name.
 - Add the secrets the jobs read: `VSCE_PAT`, `OVSX_PAT`, `NPM_TOKEN`. The GitHub releases use the workflow's own token. Without `VSCE_PAT` and `OVSX_PAT`, upload the `.vsix` from the GitHub release by hand.
-- The `@orbit-code` scope on npm must belong to the account or organization behind `NPM_TOKEN`. Neither `@orbit-code/indexer` nor `@orbit-code/server` has been published yet.
+- `NPM_TOKEN` must belong to the npm account that owns the packages: `@imshaikot/orbit-code-server` is under the maintainer's account, while `@orbit-code/indexer`, not yet published, would need an `orbit-code` organization.
 - Dry-run everything: `yarn nx release --dry-run --skip-publish`, `yarn package && node apps/vscode/scripts/publish.mjs --dry-run`, and `yarn nx run indexer:build -c production && yarn nx release publish --projects=indexer --dry-run` (the same for `server`).

@@ -1,4 +1,4 @@
-# @orbit-code/server
+# @imshaikot/orbit-code-server
 
 The local server for [Orbit Code](https://github.com/imshaikot/orbit-code), which draws a workspace as a live 3D dependency graph and animates a Claude Code session moving through it.
 
@@ -14,8 +14,8 @@ The server is Orbit's host in one Node process, for places that can't embed Orbi
 ## Usage
 
 ```sh
-npx @orbit-code/server --version   # the server's version, and the protocol version its page speaks
-npx @orbit-code/server --help
+npx @imshaikot/orbit-code-server --version   # the server's version, and the protocol version its page speaks
+npx @imshaikot/orbit-code-server --help
 ```
 
 ## What the package holds
