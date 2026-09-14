@@ -2,8 +2,8 @@ import { type FSWatcher, existsSync, watch } from 'node:fs';
 import { join, sep } from 'node:path';
 import type { Disposable } from '@orbit-code/common/event';
 import type { Logger } from '@orbit-code/common/log';
-import { ChangeBatcher, type WatchedChanges } from '@orbit-code/core/changeBatcher';
 import { ALWAYS_EXCLUDED_DIRS, isIndexable } from '@orbit-code/graph/languages';
+import { ChangeBatcher, type WatchedChanges } from './changeBatcher';
 
 /**
  * The folder's file events, fed into ChangeBatcher the way the extension's VS Code watchers feed it: a file created or

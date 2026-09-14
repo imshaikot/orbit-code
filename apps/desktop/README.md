@@ -70,11 +70,11 @@ The main process is `src/main/`:
 | `workspace.ts` | One folder's engine: GraphService, SessionService and the shared OrbitController, with the desktop's dialogs and notifications as its `HostUi` |
 | `window.ts` | The BrowserWindow as the controller's transport: `ready`, visibility, and messages only from its own top frame |
 | `page.ts` | The `orbit://app/` scheme: the page with a fresh nonce and the panel's CSP, and `webview.js` |
-| `files.ts` | The file menu and editor sheet's requests, on the disk |
-| `watcher.ts` | A recursive `fs.watch` feeding ChangeBatcher, for live updates |
 | `settings.ts`, `recent.ts`, `trust.ts` | The JSON files in user data |
 | `notifications.ts`, `tray.ts` | Permission notifications, the tray and the dock count |
 | `shellPath.ts` | The login shell's PATH, for an app started from the Finder or a launcher |
+
+The file menu and editor sheet's requests on the disk (`DiskFileHost`), the recursive `fs.watch` feeding live updates (`FolderWatcher`) and the log file (`FileLogger`) come from `packages/core`, which the local server uses too.
 
 `src/preload/preload.ts` exposes `window.orbitHost.postMessage` to the page and delivers the host's messages as window `message` events, which is the contract `packages/webview/src/host.ts` has with any host but VS Code. The window is sandboxed, with context isolation and no Node integration.
 

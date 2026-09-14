@@ -6,14 +6,14 @@ import { SessionService } from '@orbit-code/agent/sessionService';
 import type { Disposable } from '@orbit-code/common/event';
 import type { Logger } from '@orbit-code/common/log';
 import { type HostUi, OrbitController, type PermissionPrompt } from '@orbit-code/core/controller';
+import { DiskFileHost } from '@orbit-code/core/diskFileHost';
+import { FolderWatcher } from '@orbit-code/core/folderWatcher';
 import { GraphService, type WorkspaceFolderInfo } from '@orbit-code/core/graphService';
 import { type OrbitSettings, applySettings } from '@orbit-code/core/settings';
 import { listFilesOnDisk } from '@orbit-code/indexer/listFiles';
 import type { HostCapabilities, SessionState } from '@orbit-code/protocol';
 import { dialog, shell } from 'electron';
-import { DesktopFileHost } from './files';
 import { notifyPermission } from './notifications';
-import { FolderWatcher } from './watcher';
 import type { OrbitWindow } from './window';
 
 export interface WorkspaceOptions {
@@ -65,7 +65,7 @@ export class Workspace implements HostUi, Disposable {
       { model: claude.model, effort: claude.effort, permissionMode: claude.permissionMode },
       () => ({ cwd: path, trusted: options.trusted() }),
     );
-    const files = new DesktopFileHost(path, log, (absolute) => shell.trashItem(absolute), (id, file, reply) => this.controller.sendFile(id, file, reply));
+    const files = new DiskFileHost(path, log, (absolute) => shell.trashItem(absolute), (id, file, reply) => this.controller.sendFile(id, file, reply));
     this.controller = new OrbitController(log, this.graphs, this.session, new ConversationHistory(), files, this);
     // Keeps the graph current; a finished turn flushes at once.
     this.watcher = new FolderWatcher(path, log, (changes) => this.graphs.refresh(changes));

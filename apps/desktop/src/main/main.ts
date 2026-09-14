@@ -9,8 +9,8 @@
 
 import { statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { FileLogger } from '@orbit-code/core/fileLogger';
 import { BrowserWindow, Menu, type MenuItemConstructorOptions, app, dialog, shell } from 'electron';
-import { FileLogger } from './logger';
 import { registerScheme, servePage } from './page';
 import { RecentFolders } from './recent';
 import { SettingsFile } from './settings';

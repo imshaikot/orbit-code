@@ -2,11 +2,11 @@ import { type FSWatcher, watch } from 'node:fs';
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { Logger } from '@orbit-code/common/log';
-import type { FileHost } from '@orbit-code/core/controller';
-import { FOLLOW_DEBOUNCE_MS, type FileReplySink, MAX_SHEET_BYTES, baseText, failedReply, gitState } from '@orbit-code/core/fileHelpers';
 import { basenameOf } from '@orbit-code/graph/languages';
 import type { FileReply, FileRequest } from '@orbit-code/protocol';
 import { isWorkspaceId } from '@orbit-code/protocol/workspacePath';
+import type { FileHost } from './controller';
+import { FOLLOW_DEBOUNCE_MS, type FileReplySink, MAX_SHEET_BYTES, baseText, failedReply, gitState } from './fileHelpers';
 
 /** How far into a file a NUL byte marks it as binary, which the editor sheet can't hold. */
 const BINARY_SNIFF_BYTES = 8000;
@@ -22,11 +22,12 @@ interface Followed {
 }
 
 /**
- * What the file menu and the editor sheet do to a folder's files in the desktop app, straight on the disk: git
- * state, the text of the one file the sheet follows and saving it, delete (to the trash) and rename. There are no
- * editor tabs (`HostCapabilities.tabs` is false), so `show` is refused. Paths are graph ids the controller checked.
+ * What the file menu and the editor sheet do to a folder's files for a host without an editor (the desktop app, the
+ * server), straight on the disk: git state, the text of the one file the sheet follows and saving it, delete (to the
+ * trash) and rename. There are no editor tabs (`HostCapabilities.tabs` is false), so `show` is refused. Paths are
+ * graph ids the controller checked.
  */
-export class DesktopFileHost implements FileHost {
+export class DiskFileHost implements FileHost {
   private followed: Followed | undefined;
   private revisions = 0;
 

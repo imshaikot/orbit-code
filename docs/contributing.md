@@ -40,7 +40,7 @@ After a rebuild with a watch running: **Developer: Restart Extension Host** (or 
 | Claude CLI arguments or process handling | `packages/agent/src/claudeCli.ts`; `AgentStartOptions` in `backend.ts` | `sameOptions()` in `conversation.ts`, if a change must restart the process; a real smoke turn |
 | Stream-json parsing | `packages/agent/src/streamJson.ts` (pure; unknown shapes return nothing); `onAgentEvent()` in `conversation.ts` | A real smoke turn |
 | What a tool call animates or shows | `packages/agent/src/tools.ts`, `packages/core/src/sessionProjector.ts` | The host simulator's scripted turn, if the page must react to something new |
-| A file operation | `apps/vscode/src/fileActions.ts` and `apps/desktop/src/main/files.ts` together; shapes in `packages/core/src/fileHelpers.ts` | |
+| A file operation | `apps/vscode/src/fileActions.ts` and `packages/core/src/diskFileHost.ts` together; shapes in `packages/core/src/fileHelpers.ts` | |
 | Status bar, notifications, tray | `apps/vscode/src/statusBar.ts`, `apps/desktop/src/main/tray.ts` and `notifications.ts`; the wording in `packages/agent/src/sessionSummary.ts` is shared | |
 | An extractor, live updates, the layout | [The graph pipeline](graph-pipeline.md) | Reindex to see an extractor change; a full index compared with an incremental run |
 | Anything keyed by node or cluster index in the page | `World` and its layers | An adopt for any new animation state |

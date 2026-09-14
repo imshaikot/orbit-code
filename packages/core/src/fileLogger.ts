@@ -6,11 +6,14 @@ import type { Logger } from '@orbit-code/common/log';
 const MAX_BYTES = 5 * 1024 * 1024;
 
 /**
- * Orbit's log as a file, with the lines VS Code's Orbit.log holds (the smoke test greps the same ones), also written to
- * stderr so `yarn desktop` shows them.
+ * Orbit's log as a file, with the lines VS Code's Orbit.log holds (the smoke tests grep the same ones), also written to
+ * stderr when `echo` is on, so `yarn desktop` shows them; the server echoes them only with `--verbose`.
  */
 export class FileLogger implements Logger {
-  constructor(readonly path: string) {
+  constructor(
+    readonly path: string,
+    private readonly echo = true,
+  ) {
     mkdirSync(dirname(path), { recursive: true });
     try {
       if (statSync(path).size > MAX_BYTES) renameSync(path, `${path}.1`);
@@ -33,7 +36,7 @@ export class FileLogger implements Logger {
 
   private write(level: 'info' | 'warn' | 'error', message: string): void {
     const line = `${timestamp(new Date())} [${level}] ${message}\n`;
-    process.stderr.write(line);
+    if (this.echo) process.stderr.write(line);
     try {
       appendFileSync(this.path, line);
     } catch {
