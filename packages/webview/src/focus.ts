@@ -33,9 +33,23 @@ export interface FocusTree {
   readonly children: number[][];
 }
 
+/** How a camera move plays out: easing out, so a click answers at once, or in and out, the glide of a tour's leg. */
+export type Ease = 'out' | 'inOut';
+
+export interface FrameOptions {
+  /** The directory being framed, whose path alone opens on the way: a file's own directory, or -1 in the Flat view. */
+  to: number;
+  /** In milliseconds; 0 jumps there. */
+  duration: number;
+  /** The direction from the target to the camera; the camera's own by default. */
+  bearing?: THREE.Vector3;
+  ease?: Ease;
+}
+
 interface Tween {
   start: number;
   duration: number;
+  ease: Ease;
   fromPosition: THREE.Vector3;
   toPosition: THREE.Vector3;
   fromTarget: THREE.Vector3;
@@ -63,6 +77,8 @@ export class Focus {
   private changed = false;
   /** The Flat view has no directories: what is on screen stops following the camera until `thaw`. */
   private frozen = false;
+  /** The controls stay off between camera moves too (a tour has the camera). */
+  private held = false;
 
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
@@ -99,11 +115,22 @@ export class Focus {
 
   /** Moves the camera to frame a directory. Opening it, or backing out to it, follows from the zoom. */
   go(cluster: number, animate: boolean, duration = DURATION_MS): void {
-    const sphere = this.sphereOf(cluster);
-    const direction = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
+    this.frame(this.sphereOf(cluster), { to: cluster, duration: animate ? duration : 0 });
+  }
+
+  /** Moves the camera to frame `sphere`, from `bearing` or the direction it already looks from. */
+  frame(sphere: Sphere, options: FrameOptions): void {
+    const direction = options.bearing?.clone() ?? new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
     if (direction.lengthSq() < 1e-6) direction.set(0.3, 0.42, 1);
     direction.normalize();
-    this.move(sphere.center, sphere.center.clone().addScaledVector(direction, fitDistance(sphere.radius, this.camera)), cluster, animate, duration);
+    const position = sphere.center.clone().addScaledVector(direction, fitDistance(sphere.radius, this.camera));
+    this.move(sphere.center, position, options.to, options.duration > 0, options.duration, options.ease ?? 'out');
+  }
+
+  /** Keeps the controls off between camera moves as well (a tour has the camera), until released. */
+  hold(on: boolean): void {
+    this.held = on;
+    this.controls.enabled = !on && this.tween === undefined;
   }
 
   /**
@@ -116,7 +143,7 @@ export class Focus {
     if (bearing.lengthSq() < 1e-6) bearing.set(0.3, 0, 1);
     const direction = bearing.normalize().multiplyScalar(Math.cos(FLAT_ELEVATION)).setY(Math.sin(FLAT_ELEVATION));
     // A disc seen at an angle fills less of the view than the sphere around it.
-    this.move(disc.center, disc.center.clone().addScaledVector(direction, fitDistance(disc.radius * 0.8, this.camera)), -1, animate, duration);
+    this.move(disc.center, disc.center.clone().addScaledVector(direction, fitDistance(disc.radius * 0.8, this.camera)), -1, animate, duration, 'out');
   }
 
   /** Back to the directories: the camera frames `cluster`, and what is on screen follows the camera again. */
@@ -125,18 +152,20 @@ export class Focus {
     this.go(cluster, animate, duration);
   }
 
-  private move(target: THREE.Vector3, toPosition: THREE.Vector3, to: number, animate: boolean, duration: number): void {
+  private move(target: THREE.Vector3, toPosition: THREE.Vector3, to: number, animate: boolean, duration: number, ease: Ease): void {
     if (!animate) {
       this.tween = undefined;
       this.camera.position.copy(toPosition);
       this.controls.target.copy(target);
       this.controls.update();
+      this.controls.enabled = !this.held;
       this.sync();
       return;
     }
     this.tween = {
       start: performance.now(),
       duration,
+      ease,
       fromPosition: this.camera.position.clone(),
       toPosition,
       fromTarget: this.controls.target.clone(),
@@ -156,6 +185,7 @@ export class Focus {
     this.open = open;
     this.cluster = previous.cluster;
     this.frozen = previous.frozen;
+    this.held = previous.held;
     if (moved && !this.frozen) this.go(open, true);
     this.sync();
     this.changed = true;
@@ -166,13 +196,13 @@ export class Focus {
     const tween = this.tween;
     if (tween) {
       const t = Math.min(1, (now - tween.start) / tween.duration);
-      const eased = 1 - Math.pow(1 - t, 3);
+      const eased = tween.ease === 'inOut' ? (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2) : 1 - Math.pow(1 - t, 3);
       this.camera.position.lerpVectors(tween.fromPosition, tween.toPosition, eased);
       this.controls.target.lerpVectors(tween.fromTarget, tween.toTarget, eased);
       this.camera.lookAt(this.controls.target);
       if (t >= 1) {
         this.tween = undefined;
-        this.controls.enabled = true;
+        this.controls.enabled = !this.held;
         this.controls.update();
       }
     }
@@ -280,7 +310,8 @@ function smoothstep(from: number, to: number, value: number): number {
   return x * x * (3 - 2 * x);
 }
 
-function fitDistance(radius: number, camera: THREE.PerspectiveCamera): number {
+/** How far from a sphere's centre the camera frames it, with a little room around. */
+export function fitDistance(radius: number, camera: THREE.PerspectiveCamera): number {
   const vertical = THREE.MathUtils.degToRad(camera.fov) / 2;
   const horizontal = Math.atan(Math.tan(vertical) * camera.aspect);
   return (radius * 1.08) / Math.sin(Math.min(vertical, horizontal));

@@ -50,6 +50,8 @@ export class Interaction {
   /** Picks run one after another; the picker takes one at a time. */
   private queue: Promise<unknown> = Promise.resolve();
   private inFlight = 0;
+  /** A tour has the graph: nothing is hovered, clicked, backed out of or gone to until it is over. */
+  private locked = false;
 
   constructor(
     private readonly stage: Stage,
@@ -61,6 +63,7 @@ export class Interaction {
 
     canvas.addEventListener('pointermove', (event) => {
       this.pointer = { x: event.offsetX, y: event.offsetY, clientX: event.clientX, clientY: event.clientY };
+      if (this.locked) return;
       const pressed = this.pressedAt;
       if (pressed && !this.dragging && Math.hypot(event.offsetX - pressed.x, event.offsetY - pressed.y) > CLICK_SLOP_PX) {
         // A drag: the camera moves with the pointer, so nothing is under it to hover, and a pick per frame would be wasted.
@@ -83,7 +86,7 @@ export class Interaction {
     });
 
     canvas.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || this.locked) return;
       this.pressedAt = { x: event.offsetX, y: event.offsetY };
       // Whatever is under the pointer is looked up now, so the answer is usually in by the time the button comes up.
       if (!this.fresh(event.offsetX, event.offsetY)) void this.pickAt(event.offsetX, event.offsetY, 'hover');
@@ -118,6 +121,21 @@ export class Interaction {
     });
   }
 
+  /** Takes the pointer and the keys away from the graph (a tour has it), or gives them back. */
+  setLocked(on: boolean): void {
+    this.locked = on;
+    this.pressedAt = undefined;
+    this.dragging = false;
+    this.motionPickWanted = false;
+    this.hoverRequested = !on && this.pointer !== undefined;
+    if (on) {
+      this.world()?.hover({ kind: 'none' });
+      this.view.hideTooltip();
+      this.stage.renderer.domElement.style.cursor = '';
+    }
+    this.view.wake();
+  }
+
   /** Runs after each rendered frame and starts at most one hover pick. True while one is still wanted, so the frame loop keeps pace. */
   afterFrame(): boolean {
     if (this.motionPickWanted && this.pointer && !this.dragging && performance.now() - this.lastPickAt >= MOTION_PICK_MS) {
@@ -134,13 +152,13 @@ export class Interaction {
 
   /** A live update replaced the World and node indices moved: pick again under the pointer. */
   worldReplaced(): void {
-    this.hoverRequested = this.pointer !== undefined;
+    this.hoverRequested = this.pointer !== undefined && !this.locked;
     this.view.wake();
   }
 
   /** The camera moved under a still pointer (a zoom, damping, a directory opened by the zoom): what is under it may have changed. */
   cameraMoved(): void {
-    if (this.pointer && !this.dragging) this.motionPickWanted = true;
+    if (this.pointer && !this.dragging && !this.locked) this.motionPickWanted = true;
   }
 
   /** The file the pointer is over, from the latest pick over the current World, or undefined. */
@@ -157,13 +175,13 @@ export class Interaction {
 
   /** Back out to the directory around the one in view. */
   up(): void {
-    if (this.world()?.up()) this.moved();
+    if (!this.locked && this.world()?.up()) this.moved();
   }
 
   /** Straight to a directory on the current path (the breadcrumb). */
   goTo(cluster: number): void {
     const world = this.world();
-    if (!world || world.focus.cluster === cluster) return;
+    if (!world || this.locked || world.focus.cluster === cluster) return;
     world.goTo(cluster);
     this.moved();
   }

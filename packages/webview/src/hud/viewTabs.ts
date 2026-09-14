@@ -62,6 +62,12 @@ export class ViewTabs {
     return this.current;
   }
 
+  /** Whether the tabs take clicks and keys; off while a tour has the view. */
+  setEnabled(on: boolean): void {
+    for (const tab of this.tabs.values()) tab.disabled = !on;
+    this.list.setAttribute('aria-disabled', String(!on));
+  }
+
   /** Shows `mode` as the chosen view, without telling anyone. */
   set(mode: ViewMode): void {
     this.current = mode;
