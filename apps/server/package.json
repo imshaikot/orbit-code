@@ -1,6 +1,6 @@
 {
   "name": "@imshaikot/orbit-code-server",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "private": true,
   "description": "Orbit Code in your browser: the Orbit host for one folder in a Node process on 127.0.0.1, which the web client at orbit-code.imshaikot.com/web-client/ connects to.",
   "license": "MIT",
