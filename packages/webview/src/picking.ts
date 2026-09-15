@@ -63,7 +63,13 @@ export class Picker {
     camera.clearViewOffset();
 
     try {
-      await renderer.readRenderTargetPixelsAsync(this.target, 0, 0, 1, 1, this.pixel);
+      try {
+        await renderer.readRenderTargetPixelsAsync(this.target, 0, 0, 1, 1, this.pixel);
+      } catch {
+        // The readback's fence failed (WAIT_FAILED): the context was lost, or a software renderer dropped it.
+        // Nothing was under the pointer as far as we know; the next pick tries again.
+        return undefined;
+      }
       const id = (this.pixel[0] << 16) | (this.pixel[1] << 8) | this.pixel[2];
       if (id === 0) return { kind: 'none' };
       if (id >= PICK_CLAUDE_BASE) return { kind: 'claude', index: id - PICK_CLAUDE_BASE };
