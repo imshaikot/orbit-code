@@ -33,7 +33,18 @@ try {
       ORBIT_SMOKE_PROMPT: process.env.ORBIT_SMOKE_PROMPT ?? '',
       ORBIT_SMOKE_MODEL: process.env.ORBIT_SMOKE_MODEL ?? '',
     },
-    launchArgs: [root, '--disable-extensions', `--user-data-dir=${userDataDir}`, '--skip-welcome', '--skip-release-notes', '--disable-workspace-trust'],
+    // --enable-unsafe-swiftshader gives the webview WebGL on a machine without a GPU (CI): without it the renderer
+    // throws before the page posts `ready`, nothing reaches Orbit.log, and the layout never comes. VS Code warns that
+    // it doesn't know the switch but still hands it to Chromium, as the desktop smoke and the harness do.
+    launchArgs: [
+      root,
+      '--disable-extensions',
+      `--user-data-dir=${userDataDir}`,
+      '--skip-welcome',
+      '--skip-release-notes',
+      '--disable-workspace-trust',
+      '--enable-unsafe-swiftshader',
+    ],
   });
   console.log('[smoke] passed');
 } catch (error) {
